@@ -297,12 +297,22 @@ export default function App() {
 
       const onProgress = (info) => {
         if (info.status === 'progress_total') {
+          // Aggregate progress across all files (from upstream ModelRegistry commit)
           setDownloadProgress({
             pct: Math.round(info.progress),
             loaded: info.loaded,
             total: info.total,
             file: info.name ?? '',
           });
+        } else if (info.status === 'progress') {
+          // Fallback: per-file progress when aggregate total isn't available
+          const pct = info.total > 0 ? Math.round((info.loaded / info.total) * 100) : 0;
+          setDownloadProgress((prev) => ({
+            pct,
+            loaded: info.loaded,
+            total: info.total,
+            file: info.file ?? prev?.file ?? '',
+          }));
         } else if (info.status === 'ready') {
           setDownloadProgress(null);
         }

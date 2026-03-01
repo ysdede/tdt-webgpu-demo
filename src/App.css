@@ -1,233 +1,143 @@
-:root {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: #111827;
-  background: #f3f4f6;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Toggle: flat minimal; no blue (overrides @tailwindcss/forms) */
+.toggle-checkbox {
+  outline: none !important;
+  accent-color: #546a7b !important;
+  background-color: white !important;
+  background-image: none !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+.dark .toggle-checkbox {
+  accent-color: #5a6b7a !important;
+  background-color: white !important;
+}
+.toggle-checkbox:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px #f9fafb, 0 0 0 4px #9ca3af !important;
+}
+.dark .toggle-checkbox:focus {
+  box-shadow: 0 0 0 2px #111827, 0 0 0 4px #6b7280 !important;
+}
+.toggle-checkbox:checked {
+  right: 0;
+  background-color: white !important;
+  background-image: none !important;
+}
+.toggle-checkbox:checked + .toggle-label {
+  background-color: #546a7b !important;
+}
+.dark .toggle-checkbox:checked + .toggle-label {
+  background-color: #5a6b7a !important;
 }
 
-* {
-  box-sizing: border-box;
+/* Dark theme: subtler widget borders so they don’t read as white */
+.dark [class*="border-border-dark"],
+.dark .upload-zone {
+  border-color: #1c222a !important;
+}
+
+/* Remove native select arrow so custom expand_more icon is the only one */
+select,
+select.appearance-none {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-image: none;
+}
+select::-ms-expand {
+  display: none;
+}
+
+/* Smooth transitions */
+input,
+select,
+textarea {
+  transition: all 0.2s ease-in-out;
 }
 
 body {
-  margin: 0;
-  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+  transition: background-color 0.3s, color 0.3s;
 }
 
-.app {
-  min-height: 100vh;
-  padding: 24px;
-}
-
-.card {
-  max-width: 920px;
-  margin: 0 auto;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
-}
-
-h1 {
-  margin: 0 0 6px 0;
-  font-size: 24px;
-}
-
-.sub {
-  margin: 0;
-  color: #4b5563;
-  font-size: 14px;
-}
-
-.hint {
-  margin: 10px 0 20px 0;
-  color: #334155;
-  font-size: 14px;
-}
-
-.row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-input,
-select,
-button {
-  font: inherit;
-}
-
-input,
-select {
-  width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 9px 11px;
-  background: #fff;
-}
-
-.grid3 {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 12px;
-  margin-top: 12px;
-  align-items: end;
-}
-
-.check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #334155;
-}
-
-.check input {
-  width: auto;
-}
-
-.buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-  flex-wrap: wrap;
-}
-
-button,
-.fileBtn {
-  border: none;
-  border-radius: 8px;
-  padding: 9px 14px;
-  background: #0f766e;
-  color: #fff;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-button[disabled],
-.fileBtn:has(input:disabled) {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.fileBtn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.fileBtn input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.status {
-  margin: 10px 0 0 0;
-  font-size: 13px;
-  color: #334155;
-}
-
-.error {
-  margin: 12px 0 0 0;
-  white-space: pre-wrap;
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 13px;
-}
-
-.result {
-  margin-top: 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #f8fafc;
-  padding: 12px;
-}
-
-.result h2 {
-  margin: 0 0 8px 0;
-  font-size: 15px;
-  color: #334155;
-}
-
-.result pre {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-x: auto;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.progressWrap {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.progressBar {
-  flex: 1;
+/* Custom scrollbar for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 8px;
   height: 8px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  overflow: hidden;
 }
 
-.progressFill {
-  height: 100%;
-  background: #0f766e;
-  transition: width 0.2s ease;
+.dark ::-webkit-scrollbar-track {
+  background: #1f2937;
 }
 
-.progressLabel {
-  font-size: 12px;
-  color: #334155;
-  min-width: 36px;
-  text-align: right;
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
 }
 
-.historyList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
 }
 
-.historyItem {
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  padding: 10px;
-  background: #ffffff;
-}
-
-.historyMeta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: #475569;
-  margin-bottom: 6px;
-}
-
-@media (max-width: 860px) {
-  .grid3,
-  .grid2 {
-    grid-template-columns: 1fr;
+/* Loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* File input: flat neutral */
+input[type="file"]::file-selector-button {
+  padding: 0.5rem 1rem;
+  background: #e5e7eb;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.dark input[type="file"]::file-selector-button {
+  background: #374151;
+  color: #e5e7eb;
+  border-color: #4b5563;
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: #d1d5db;
+}
+
+.dark input[type="file"]::file-selector-button:hover {
+  background: #4b5563;
+}
+
+/* JSON output formatting */
+.json-output {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.json-output::-webkit-scrollbar {
+  width: 6px;
+}
+
+.json-output::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.json-output::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.dark .json-output::-webkit-scrollbar-thumb {
+  background: #4b5563;
 }
