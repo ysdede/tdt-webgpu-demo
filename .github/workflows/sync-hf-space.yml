@@ -55,7 +55,7 @@ jobs:
           title: Transformers.js v4 Parakeet TDT Demo
           emoji: 🎙️
           colorFrom: blue
-          colorTo: cyan
+          colorTo: indigo
           sdk: static
           pinned: true
           header: mini
