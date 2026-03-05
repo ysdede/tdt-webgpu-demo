@@ -87,6 +87,14 @@ const MAX_WASM_CORES = detectMaxCores();
 const DEFAULT_WASM_THREADS = Math.max(1, Math.floor(MAX_WASM_CORES / 2));
 let ortWasmBlobInitPromise = null;
 let ortWasmBlobUrls = null;
+const isInIframe = (() => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
 
 if (typeof window !== 'undefined') {
   const { env } = Transformers;
@@ -243,6 +251,7 @@ export default function App() {
       ? clampThreadCount(initialSettings.wasmThreads, MAX_WASM_CORES)
       : DEFAULT_WASM_THREADS
   );
+  const [threadingStatus, setThreadingStatus] = useState({ sab: false, threads: 1 });
 
   const [direct, setDirect] = useState(initialSettings.direct !== undefined ? Boolean(initialSettings.direct) : true);
   const [rt, setRt] = useState(initialSettings.rt !== undefined ? Boolean(initialSettings.rt) : true);
@@ -321,10 +330,21 @@ export default function App() {
   }, [initialSettings.darkMode]);
 
   useEffect(() => {
+    const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
+    const coiAvailable = typeof window !== 'undefined' && window.crossOriginIsolated === true;
+    const multiThreadReady = sabAvailable && coiAvailable;
+    setThreadingStatus({
+      sab: multiThreadReady,
+      threads: multiThreadReady ? maxWasmCores : 1,
+    });
+  }, [maxWasmCores]);
+
+  useEffect(() => {
     const { env } = Transformers;
     if (!env?.backends?.onnx?.wasm) return;
-    env.backends.onnx.wasm.numThreads = clampThreadCount(wasmThreads, maxWasmCores);
-  }, [wasmThreads, maxWasmCores]);
+    const allowedThreads = threadingStatus.sab ? maxWasmCores : 1;
+    env.backends.onnx.wasm.numThreads = clampThreadCount(wasmThreads, allowedThreads);
+  }, [wasmThreads, maxWasmCores, threadingStatus.sab]);
 
   useEffect(() => {
     saveSettings({
@@ -595,16 +615,16 @@ export default function App() {
 
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                    WASM Threads (1-{maxWasmCores})
+                    WASM Threads (1-{threadingStatus.sab ? maxWasmCores : 1})
                   </label>
                   <input
                     type="number"
                     min={1}
-                    max={maxWasmCores}
+                    max={threadingStatus.sab ? maxWasmCores : 1}
                     step={1}
                     value={wasmThreads}
-                    onChange={(e) => setWasmThreads(clampThreadCount(e.target.value, maxWasmCores))}
-                    disabled={configDisabled}
+                    onChange={(e) => setWasmThreads(clampThreadCount(e.target.value, threadingStatus.sab ? maxWasmCores : 1))}
+                    disabled={configDisabled || !threadingStatus.sab}
                     className="w-full bg-gray-50 dark:bg-gray-800 border border-border-light dark:border-border-dark rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-muted focus:border-primary-muted dark:focus:ring-accent-muted dark:focus:border-accent-muted dark:text-white"
                   />
                 </div>
@@ -740,9 +760,25 @@ export default function App() {
                 model_type: {mType}
               </span>
               <span className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full border border-border-light dark:border-border-dark text-primary-muted dark:text-accent-muted">
-                wasm_threads: {clampThreadCount(wasmThreads, maxWasmCores)}
+                wasm_threads: {clampThreadCount(wasmThreads, threadingStatus.sab ? maxWasmCores : 1)}
               </span>
             </div>
+            <div className="flex items-center gap-2 px-1 mt-2">
+              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${threadingStatus.sab
+                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+                }`}>
+                <span className="material-icons-outlined text-xs">
+                  {threadingStatus.sab ? 'check_circle' : 'warning'}
+                </span>
+                {threadingStatus.sab ? `Multi-threaded (${threadingStatus.threads} cores)` : 'Single-threaded'}
+              </span>
+            </div>
+            {!threadingStatus.sab && isInIframe && (
+              <div className="px-1 mt-2 text-xs text-gray-600 dark:text-gray-400">
+                Open this Space directly (outside the Hugging Face wrapper) to enable multi-threading.
+              </div>
+            )}
             {!!error && (
               <div className="mx-1 p-3 bg-gray-100 dark:bg-gray-800 border border-border-light dark:border-border-dark rounded-lg text-sm text-gray-800 dark:text-gray-200 break-words">
                 {error}
