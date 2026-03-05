@@ -98,11 +98,12 @@ Notes:
 Run a quick transcription from the terminal:
 
 ```bash
-npm run test:node -- --model ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4 --audio public/assets/life_Jim.wav --encoder-device webgpu
+npm run test:node -- --model ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4 --audio <path-to-wav-file> --encoder-device webgpu
 ```
 
 By default, this script loads the local transformers build from `../transformers.js/packages/transformers/dist/transformers.node.mjs`.
 Use `--npm` to use the installed npm package instead.
+Node CLI input must be WAV (`.wav`).
 
 | Option | Description |
 |--------|-------------|
@@ -117,7 +118,7 @@ Use `--npm` to use the installed npm package instead.
 
 ## Included Sample
 
-Sample audio file: `public/assets/life_Jim.wav`.
+Sample audio file used by the UI: `public/assets/Harvard-L2-1.ogg`.
 
 ## Additional Notes
 

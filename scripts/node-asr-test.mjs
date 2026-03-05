@@ -101,9 +101,10 @@ function resampleLinear(audio, fromRate, toRate) {
 
 function parseArgs() {
   const args = process.argv.slice(2);
+  const defaultWav = path.resolve(process.cwd(), 'public/assets/life_Jim.wav');
   const out = {
     model: 'ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4',
-    audio: path.resolve(process.cwd(), 'public/assets/life_Jim.wav'),
+    audio: defaultWav,
     encoderDevice: 'webgpu',
     encoderDtype: 'fp16',
     decoderDtype: 'int8',
@@ -132,6 +133,22 @@ function parseArgs() {
 async function main() {
   const opts = parseArgs();
   const modulePath = opts.local ? opts.localModule : '@huggingface/transformers';
+
+  if (!fs.existsSync(opts.audio)) {
+    throw new Error(
+      `Audio file not found: ${opts.audio}\n` +
+      `Node CLI supports WAV input only. Pass --audio <path-to-wav-file>.`
+    );
+  }
+
+  const audioExt = path.extname(opts.audio).toLowerCase();
+
+  if (audioExt !== '.wav') {
+    throw new Error(
+      `Node CLI currently supports WAV input only. Got: ${opts.audio}\n` +
+      `Use --audio <path-to-wav-file> or run the browser demo sample (OGG is supported in browser).`
+    );
+  }
 
   if (opts.local && !fs.existsSync(modulePath)) {
     throw new Error(

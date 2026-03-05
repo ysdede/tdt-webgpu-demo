@@ -12,7 +12,7 @@ const withBaseUrl = (relativePath) => {
   const base = BASE_URL.endsWith('/') ? BASE_URL : `${BASE_URL}/`;
   return `${base}${String(relativePath).replace(/^\/+/, '')}`;
 };
-const SAMPLE = withBaseUrl('assets/life_Jim.wav');
+const SAMPLE = withBaseUrl('assets/Harvard-L2-1.ogg');
 
 const VERSION = typeof __TRANSFORMERS_VERSION__ !== 'undefined' ? __TRANSFORMERS_VERSION__ : 'unknown';
 const SOURCE = typeof __TRANSFORMERS_SOURCE__ !== 'undefined' ? __TRANSFORMERS_SOURCE__ : 'unknown';
@@ -680,7 +680,7 @@ export default function App() {
               <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
                 <div className="flex gap-3">
                   <button
-                    onClick={() => transcribeInput(SAMPLE, 'life_Jim.wav')}
+                    onClick={() => transcribeInput(SAMPLE, 'Harvard-L2-1.ogg')}
                     disabled={!canRun}
                     className="bg-primary hover:bg-primary-hover dark:bg-primary dark:hover:bg-primary-muted text-white font-medium py-2 px-4 rounded-lg whitespace-nowrap transition-colors text-sm h-[38px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
