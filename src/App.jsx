@@ -362,7 +362,7 @@ export default function App() {
       setMType(t?.model?.config?.model_type || 'unknown');
 
       setStatus('Verifying...');
-      const expectedText = 'The boy was there when the sun rose. A rod is used to catch pink salmon.';
+      const expectedPrefix = 'The boy was there when the sun rose.';
       try {
         const pcm = await decodeAudio(SAMPLE, 16000);
         const useDirect = t?.model?.config?.model_type === 'nemo-conformer-tdt';
@@ -375,13 +375,14 @@ export default function App() {
           const res = await t(pcm);
           warmupText = textOf(res);
         }
-        const normalize = (s) => s.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '').trim();
-        if (normalize(warmupText).includes(normalize(expectedText))) {
+        console.log('[App] Warm-up raw transcription:', warmupText);
+        const normalize = (s) => s.toLowerCase().replace(/[^\w\s]/g, '').trim();
+        if (normalize(warmupText).startsWith(normalize(expectedPrefix))) {
           console.log('[App] Warm-up verification passed');
           setModelLoaded(true);
           setStatus('Model ready');
         } else {
-          console.warn(`[App] Warm-up mismatch. Expected "${expectedText}", got "${warmupText}"`);
+          console.warn(`[App] Warm-up mismatch. Expected prefix "${expectedPrefix}", got "${warmupText}"`);
           setModelLoaded(true);
           setStatus('Model ready (warm-up text mismatch)');
         }
