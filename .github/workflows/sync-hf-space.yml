@@ -76,6 +76,11 @@ jobs:
           rm -rf hf_export && mkdir -p hf_export
           cp -r tdt-webgpu-demo/dist hf_export/dist
 
+          # Keep large wasm artifacts in LFS for HF repo limits.
+          cat > hf_export/.gitattributes << 'ATTRSEOF'
+          *.wasm filter=lfs diff=lfs merge=lfs -text
+          ATTRSEOF
+
           # Avoid forcing cross-origin isolation on Spaces.
           sed -i '/coi-serviceworker\.js/d' hf_export/dist/index.html
           rm -f hf_export/dist/coi-serviceworker.js
