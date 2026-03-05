@@ -87,7 +87,7 @@ jobs:
 
       - name: Write HF-specific files
         run: |
-          cat > hf_export/README.md << READMEEOF
+          cat > hf_export/README.md << 'READMEEOF'
           ---
           title: Transformers.js v4 Parakeet TDT Demo
           emoji: 🎙️
@@ -118,12 +118,12 @@ jobs:
 
           Browser ASR demo using Parakeet TDT models.
 
-          Synced from [`ysdede/tdt-webgpu-demo`](https://github.com/ysdede/tdt-webgpu-demo).
+          Synced from [ysdede/tdt-webgpu-demo](https://github.com/ysdede/tdt-webgpu-demo).
 
           Built in GitHub Actions from:
 
-          - Demo repo: `ysdede/tdt-webgpu-demo@${GITHUB_SHA}`
-          - Transformers source: `${TRANSFORMERS_REPO}@${TRANSFORMERS_REPO_REF}`
+          - Demo repo: `ysdede/tdt-webgpu-demo`
+          - Transformers source: `ysdede/transformers.js@v4-nemo-conformer-tdt-main-r2`
           READMEEOF
 
       - name: Push to HF Space
