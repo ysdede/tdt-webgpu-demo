@@ -3,11 +3,16 @@ import * as Transformers from '@huggingface/transformers';
 import './App.css';
 
 const MODEL_DEFAULT = 'ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4';
-const SAMPLE = '/assets/life_Jim.wav';
 const DECODER_DEVICE = 'wasm';
 const DTYPES = ['fp16', 'int8', 'fp32'];
 
 const SETTINGS_STORAGE_KEY = 'nemo-tdt-demo.settings.v1';
+const BASE_URL = import.meta.env?.BASE_URL || '/';
+const withBaseUrl = (relativePath) => {
+  const base = BASE_URL.endsWith('/') ? BASE_URL : `${BASE_URL}/`;
+  return `${base}${String(relativePath).replace(/^\/+/, '')}`;
+};
+const SAMPLE = withBaseUrl('assets/life_Jim.wav');
 
 const VERSION = typeof __TRANSFORMERS_VERSION__ !== 'undefined' ? __TRANSFORMERS_VERSION__ : 'unknown';
 const SOURCE = typeof __TRANSFORMERS_SOURCE__ !== 'undefined' ? __TRANSFORMERS_SOURCE__ : 'unknown';
@@ -53,7 +58,7 @@ if (typeof window !== 'undefined') {
   env.allowLocalModels = false;
   if (env?.backends?.onnx?.wasm) {
     env.backends.onnx.wasm.proxy = false;
-    env.backends.onnx.wasm.wasmPaths = '/ort/';
+    env.backends.onnx.wasm.wasmPaths = withBaseUrl('ort/');
   }
 }
 
@@ -67,8 +72,8 @@ async function ensureLocalOrtWasmBlobs() {
       return;
     }
 
-    const mjsSrc = '/ort/ort-wasm-simd-threaded.asyncify.mjs';
-    const wasmSrc = '/ort/ort-wasm-simd-threaded.asyncify.wasm';
+    const mjsSrc = withBaseUrl('ort/ort-wasm-simd-threaded.asyncify.mjs');
+    const wasmSrc = withBaseUrl('ort/ort-wasm-simd-threaded.asyncify.wasm');
     const [mjsResp, wasmResp] = await Promise.all([fetch(mjsSrc), fetch(wasmSrc)]);
     if (!mjsResp.ok) throw new Error(`Failed to fetch local ORT wasm factory: ${mjsResp.status}`);
     if (!wasmResp.ok) throw new Error(`Failed to fetch local ORT wasm binary: ${wasmResp.status}`);
@@ -436,7 +441,9 @@ export default function App() {
   }
 
   function copyToClipboard(text) {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard?.writeText(text).catch(() => {
+      setError('Copy failed. Your browser may block clipboard access on this page.');
+    });
   }
 
   const canRun = !!tRef.current && modelLoaded && !loading && !running;

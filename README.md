@@ -119,6 +119,10 @@ Use `--npm` to use the installed npm package instead.
 
 Sample audio file: `public/assets/life_Jim.wav`.
 
+## Additional Notes
+
+- [Conformer TDT return granularity details](./docs/return-granularity.md)
+
 ## UI Notes
 
 - Model configuration supports load mode, model ID, device, dtype, and WASM thread tuning.
