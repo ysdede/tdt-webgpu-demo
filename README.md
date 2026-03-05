@@ -1,7 +1,9 @@
 # Transformers.js v4 Parakeet TDT Demo
 
 [![Deploy Demo to GitHub Pages](https://github.com/ysdede/tdt-webgpu-demo/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/ysdede/tdt-webgpu-demo/actions/workflows/deploy-pages.yml)
+[![Sync Demo to HF Space](https://github.com/ysdede/tdt-webgpu-demo/actions/workflows/sync-hf-space.yml/badge.svg)](https://github.com/ysdede/tdt-webgpu-demo/actions/workflows/sync-hf-space.yml)
 [![Live Demo](https://img.shields.io/badge/Live-GitHub%20Pages-2ea44f?logo=github)](https://ysdede.github.io/tdt-webgpu-demo/)
+[![Live Demo](https://img.shields.io/badge/Live-Hugging%20Face%20Space-ffcc4d?logo=huggingface)](https://huggingface.co/spaces/ysdede/tdt-webgpu-demo)
 
 Live demo: https://ysdede.github.io/tdt-webgpu-demo/
 
@@ -92,6 +94,21 @@ Notes:
 - GitHub Actions can only build commits that are pushed to GitHub.
 - `workflow_dispatch` supports a `transformers_ref` input for one-off branch/tag/SHA overrides.
 - The Vite base path is set automatically for both project pages and user pages.
+
+## Hugging Face Spaces Sync
+
+Sync is handled by `.github/workflows/sync-hf-space.yml`.
+
+The workflow:
+
+1. Exports an HF-safe copy of the app to `hf_export/`.
+2. Removes GitHub/local-only files and COI serviceworker wiring.
+3. Writes HF-specific `README.md`, `vite.config.js`, and `package.json`.
+4. Pushes the result to `https://huggingface.co/spaces/ysdede/tdt-webgpu-demo`.
+
+Repository settings:
+
+- Add secret `HF_TOKEN` with write access to `ysdede/tdt-webgpu-demo`.
 
 ## Node CLI Test
 

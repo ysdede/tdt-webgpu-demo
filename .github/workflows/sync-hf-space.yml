@@ -1,0 +1,177 @@
+name: Sync Demo to HF Space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - ".github/workflows/sync-hf-space.yml"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create HF export
+        run: |
+          set -euo pipefail
+          rm -rf hf_export && mkdir -p hf_export
+
+          # Copy app source (exclude dev artifacts)
+          rsync -a \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.git' \
+            ./ hf_export/
+
+          # Remove GH/local-only files
+          rm -rf hf_export/.github
+          rm -rf hf_export/scripts
+          rm -rf hf_export/docs
+          rm -f hf_export/package-lock.json
+
+          # HF Spaces serves with CORS headers; remove COI serviceworker wiring
+          sed -i '/<script src="%BASE_URL%coi-serviceworker.js"><\/script>/d' hf_export/index.html
+          rm -f hf_export/public/coi-serviceworker.js
+
+          echo "HF export ready"
+          find hf_export -maxdepth 2 -not -path '*/node_modules/*'
+
+      - name: Write HF-specific files
+        run: |
+          cat > hf_export/README.md << 'READMEEOF'
+          ---
+          title: Transformers.js v4 Parakeet TDT Demo
+          emoji: 🎙️
+          colorFrom: blue
+          colorTo: cyan
+          sdk: static
+          pinned: true
+          header: mini
+          fullWidth: true
+          app_build_command: npm install && npm run build
+          app_file: dist/index.html
+          license: mit
+          short_description: Browser ASR demo with Transformers.js v4 and Parakeet TDT
+          models:
+          - ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4
+          tags:
+          - transformers-js
+          - webgpu
+          - wasm
+          - speech-recognition
+          - asr
+          - nemo
+          custom_headers:
+            cross-origin-embedder-policy: require-corp
+            cross-origin-opener-policy: same-origin
+          preload_from_hub:
+          - ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4
+          ---
+
+          # Transformers.js v4 Parakeet TDT Demo
+
+          Browser ASR demo using Transformers.js v4 and Parakeet TDT models.
+
+          Synced from [`ysdede/tdt-webgpu-demo`](https://github.com/ysdede/tdt-webgpu-demo).
+          READMEEOF
+
+          cat > hf_export/vite.config.js << 'VITEEOF'
+          import { defineConfig } from 'vite';
+          import react from '@vitejs/plugin-react';
+          import fs from 'fs';
+          import path from 'path';
+
+          function readJson(filePath) {
+            try {
+              return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            } catch {
+              return null;
+            }
+          }
+
+          const pkg = readJson(path.resolve(__dirname, 'node_modules/@huggingface/transformers/package.json'));
+          const transformersVersion = pkg?.version || 'unknown';
+
+          export default defineConfig({
+            plugins: [react()],
+            server: {
+              port: 7860,
+              headers: {
+                'Cross-Origin-Opener-Policy': 'same-origin',
+                'Cross-Origin-Embedder-Policy': 'require-corp',
+              },
+            },
+            define: {
+              __TRANSFORMERS_VERSION__: JSON.stringify(transformersVersion),
+              __TRANSFORMERS_SOURCE__: JSON.stringify('npm'),
+            },
+          });
+          VITEEOF
+
+          cat > hf_export/package.json << 'PKGEOF'
+          {
+            "name": "transformers-v4-parakeet-tdt-demo",
+            "version": "1.0.0",
+            "private": true,
+            "type": "module",
+            "scripts": {
+              "dev": "vite",
+              "build": "vite build",
+              "preview": "vite preview"
+            },
+            "dependencies": {
+              "@huggingface/transformers": "next",
+              "react": "^18.2.0",
+              "react-dom": "^18.2.0"
+            },
+            "devDependencies": {
+              "@tailwindcss/forms": "^0.5.11",
+              "@tailwindcss/typography": "^0.5.19",
+              "@vitejs/plugin-react": "^4.0.0",
+              "autoprefixer": "^10.4.27",
+              "postcss": "^8.5.6",
+              "tailwindcss": "^3.4.19",
+              "vite": "^7.3.1",
+              "vite-plugin-top-level-await": "^1.6.0",
+              "vite-plugin-wasm": "^3.5.0"
+            }
+          }
+          PKGEOF
+
+      - name: Push to HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -e
+          SPACE_URL="https://ysdede:${HF_TOKEN}@huggingface.co/spaces/ysdede/tdt-webgpu-demo"
+          if git clone --depth 1 "$SPACE_URL" space_repo 2>/dev/null; then
+            rsync -a --delete --exclude='.git' hf_export/ space_repo/
+            cd space_repo
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "Sync from GitHub (${GITHUB_SHA::7})"
+              git push origin main
+            fi
+          else
+            cd hf_export
+            git init
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add -A
+            git commit -m "Sync from GitHub (${GITHUB_SHA::7})"
+            git branch -M main
+            git remote add origin "$SPACE_URL"
+            git push -u origin main
+          fi
