@@ -52,11 +52,11 @@ jobs:
         with:
           version: 10.28.1
 
-      - name: Install and build transformers.js
+      - name: Install and build transformers.js (skip typegen)
         working-directory: transformers.js
         run: |
           pnpm install --frozen-lockfile
-          pnpm --filter @huggingface/transformers build
+          pnpm --filter @huggingface/transformers exec node scripts/build.mjs
 
       - name: Compute Vite base path for Pages
         shell: bash
