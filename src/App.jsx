@@ -362,7 +362,7 @@ export default function App() {
       setMType(t?.model?.config?.model_type || 'unknown');
 
       setStatus('Verifying...');
-      const expectedText = 'it is not life as we know or understand it';
+      const expectedText = 'The boy was there when the sun rose. A rod is used to catch pink salmon.';
       try {
         const pcm = await decodeAudio(SAMPLE, 16000);
         const useDirect = t?.model?.config?.model_type === 'nemo-conformer-tdt';
