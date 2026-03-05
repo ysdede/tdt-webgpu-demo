@@ -1,0 +1,99 @@
+name: Deploy Demo to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      transformers_ref:
+        description: "transformers.js ref (branch/tag/SHA)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TRANSFORMERS_REPO: ${{ vars.TRANSFORMERS_REPO || 'ysdede/transformers.js' }}
+      TRANSFORMERS_REPO_REF: ${{ github.event.inputs.transformers_ref || vars.TRANSFORMERS_REPO_REF || 'v4-nemo-conformer-tdt-main' }}
+    steps:
+      - name: Checkout demo
+        uses: actions/checkout@v4
+        with:
+          path: transformers-v4-parakeet-demo
+
+      - name: Checkout transformers.js source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TRANSFORMERS_REPO }}
+          ref: ${{ env.TRANSFORMERS_REPO_REF }}
+          path: transformers.js
+          token: ${{ secrets.TRANSFORMERS_REPO_TOKEN || github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: transformers-v4-parakeet-demo/package-lock.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+
+      - name: Install and build transformers.js
+        working-directory: transformers.js
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @huggingface/transformers build
+
+      - name: Compute Vite base path for Pages
+        shell: bash
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          OWNER="${{ github.repository_owner }}"
+          if [ "$REPO" = "${OWNER}.github.io" ]; then
+            echo "VITE_BASE_PATH=/" >> "$GITHUB_ENV"
+          else
+            echo "VITE_BASE_PATH=/${REPO}/" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install demo dependencies
+        working-directory: transformers-v4-parakeet-demo
+        run: npm ci
+
+      - name: Build demo using local transformers.js source
+        working-directory: transformers-v4-parakeet-demo
+        env:
+          TRANSFORMERS_LOCAL: "true"
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: transformers-v4-parakeet-demo/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

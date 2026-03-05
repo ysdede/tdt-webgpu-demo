@@ -1,19 +1,25 @@
-# Transformers.js v4 — Nemo Conformer TDT Demo
+# Transformers.js v4 Parakeet TDT Demo
 
-A React + Vite demo for **automatic speech recognition** using the Nemo Conformer TDT (Token-and-Duration Transducer) model with [Hugging Face Transformers.js](https://huggingface.co/docs/transformers.js) v4.
+[![Deploy Demo to GitHub Pages](https://github.com/ysdede/tdt-webgpu-demo/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/ysdede/tdt-webgpu-demo/actions/workflows/deploy-pages.yml)
+[![Live Demo](https://img.shields.io/badge/Live-GitHub%20Pages-2ea44f?logo=github)](https://ysdede.github.io/tdt-webgpu-demo/)
 
-## What it does
+Live demo: https://ysdede.github.io/tdt-webgpu-demo/
 
-- Load and run Parakeet-style TDT ASR models (e.g. `ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4`) in the browser.
-- Configure encoder (WebGPU or WASM) and decoder (WASM) device/dtype.
-- Transcribe sample or uploaded audio; view transcript and raw JSON output with timestamps and confidence.
-- Optional Node script for quick CLI transcription without the browser.
+This project is a React + Vite web app for automatic speech recognition with Nemo Conformer TDT models using [Transformers.js](https://huggingface.co/docs/transformers.js) v4.
+
+## Features
+
+- Run Parakeet-style TDT ASR models in the browser, for example `ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4`.
+- Choose encoder backend and dtype settings (WebGPU or WASM).
+- Transcribe sample or uploaded audio.
+- Inspect transcript, timestamps, confidence data, and raw JSON output.
+- Run a Node.js CLI test script for quick non-UI checks.
 
 ## Requirements
 
-- **Node.js** 18+
-- **Browser**: WebGPU support recommended for best encoder performance (Chrome/Edge). WASM-only works without WebGPU.
-- For **local transformers.js development**: a sibling checkout of [transformers.js](https://github.com/huggingface/transformers.js) at `../transformers.js` (see [Local source mode](#local-source-mode) below).
+- Node.js 18 or newer.
+- A modern browser. WebGPU (Chrome or Edge) is recommended for best encoder performance.
+- Optional local development setup for `transformers.js` as a sibling folder at `../transformers.js`.
 
 ## Install
 
@@ -25,81 +31,101 @@ npm install
 
 ## Run
 
-### NPM package mode (default)
+### NPM mode (default)
 
-Uses `@huggingface/transformers@next` from npm. No extra setup.
+Uses `@huggingface/transformers@next` from npm:
 
 ```bash
 npm run dev
 ```
 
-Open the URL shown (e.g. http://localhost:5173). Load the model, then run the sample or upload an audio file.
+Then open the URL shown by Vite (typically `http://localhost:5173`).
 
-### Local source mode (optional)
+### Local source mode
 
-If you develop on [transformers.js](https://github.com/huggingface/transformers.js) and want to try changes without publishing:
+Use this when you want to test local `transformers.js` changes without publishing a package.
 
-1. Clone or place the transformers.js repo so this demo repo is a **sibling** of it, e.g.:
-   - `…/transformers.js/`
-   - `…/transformers-v4-parakeet-demo/`
-2. Build the transformers.js package from the **transformers.js repo root**:
-   ```bash
-   cd path/to/transformers.js
-   pnpm --filter @huggingface/transformers run build
-   ```
-3. Run the demo with the local build:
-   ```bash
-   cd path/to/transformers-v4-parakeet-demo
-   npm run dev:local
-   ```
+1. Keep both repositories as siblings:
+   - `.../transformers.js/`
+   - `.../transformers-v4-parakeet-demo/`
+2. Build transformers from the `transformers.js` root:
+```bash
+cd path/to/transformers.js
+pnpm --filter @huggingface/transformers run build
+```
+3. Start the demo in local mode:
+```bash
+cd path/to/transformers-v4-parakeet-demo
+npm run dev:local
+```
 
-`dev:local` sets `TRANSFORMERS_LOCAL=true` and aliases `@huggingface/transformers` to `../transformers.js/packages/transformers/dist/transformers.web.js`. Restart the dev server (or hard-refresh) after rebuilding transformers.js. The app header shows the loaded version and source (e.g. `4.0.0-next.x (dev-abc1234)` or `npm`).
+`dev:local` sets `TRANSFORMERS_LOCAL=true` and aliases `@huggingface/transformers` to `../transformers.js/packages/transformers/dist/transformers.web.js`.
 
-## Build for production
+## Production Build
 
 ```bash
 npm run build
-npm run preview   # optional: preview the built app
+npm run preview
 ```
 
-## Node quick test
+## GitHub Pages Deployment
 
-Run transcription from the CLI (no browser):
+Deployment is handled by `.github/workflows/deploy-pages.yml`.
+
+The workflow:
+
+1. Checks out this demo repository.
+2. Checks out `transformers.js` into a sibling directory.
+3. Builds `@huggingface/transformers` from source with `pnpm`.
+4. Builds this demo with `TRANSFORMERS_LOCAL=true`.
+5. Publishes `dist/` to GitHub Pages.
+
+Repository settings:
+
+- Enable Pages and select `GitHub Actions` as the source.
+- Optional repository variable `TRANSFORMERS_REPO` (default `ysdede/transformers.js`).
+- Optional repository variable `TRANSFORMERS_REPO_REF` (default `v4-nemo-conformer-tdt-main`).
+- Optional secret `TRANSFORMERS_REPO_TOKEN` if `transformers.js` is private.
+
+Notes:
+
+- GitHub Actions can only build commits that are pushed to GitHub.
+- `workflow_dispatch` supports a `transformers_ref` input for one-off branch/tag/SHA overrides.
+- The Vite base path is set automatically for both project pages and user pages.
+
+## Node CLI Test
+
+Run a quick transcription from the terminal:
 
 ```bash
 npm run test:node -- --model ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4 --audio public/assets/life_Jim.wav --encoder-device webgpu
 ```
 
-By default the script uses the local transformers build from `../transformers.js/packages/transformers/dist/transformers.node.mjs`. Use `--npm` to use the package from `node_modules` instead.
-
-**Options:**
+By default, this script loads the local transformers build from `../transformers.js/packages/transformers/dist/transformers.node.mjs`.
+Use `--npm` to use the installed npm package instead.
 
 | Option | Description |
 |--------|-------------|
-| `--model <id-or-path>` | Model ID (e.g. on Hugging Face) or local path |
-| `--audio <wav-path>` | Path to a WAV file |
-| `--encoder-device <webgpu\|cpu>` | Encoder device (Node has no WebGPU; use `cpu` if needed) |
-| `--encoder-dtype`, `--decoder-dtype` | e.g. `fp16`, `int8`, `fp32` |
+| `--model <id-or-path>` | Model ID or local model path |
+| `--audio <wav-path>` | WAV file path |
+| `--encoder-device <webgpu\|cpu>` | Encoder device (`cpu` is safer for Node) |
+| `--encoder-dtype`, `--decoder-dtype` | Examples: `fp16`, `int8`, `fp32` |
 | `--timestamps` | Request word-level timestamps |
-| `--loop <n>` | Run transcription n times (for rough benchmarks) |
-| `--npm` | Use `@huggingface/transformers` from node_modules |
-| `--local-module <path>` | Path to a custom transformers build |
+| `--loop <n>` | Repeat transcription `n` times |
+| `--npm` | Use `@huggingface/transformers` from `node_modules` |
+| `--local-module <path>` | Path to a local transformers node build |
 
-In Node, the decoder runs on CPU (WASM is browser-only). Use this for quick regression checks; browser/WebGPU issues still need to be tested in the browser.
+## Included Sample
 
-## Sample audio
+Sample audio file: `public/assets/life_Jim.wav`.
 
-Included sample: `public/assets/life_Jim.wav`. You can replace it or point the UI/CLI to your own WAV files.
+## UI Notes
 
-## UI overview
-
-- **Model configuration**: Load mode (pipeline vs explicit), model ID, encoder/decoder device and dtype, WASM thread count.
-- **Transcription options**: Direct Nemo API, timestamps, and detail flags (words, tokens, metrics, etc.).
-- **Test & transcribe**: Sample button and drag-and-drop upload; performance metrics row; transcript and output JSON panels.
-- **History**: Recent transcriptions (cleared on reload).
-
-Settings and dark/light theme are persisted in `localStorage`.
+- Model configuration supports load mode, model ID, device, dtype, and WASM thread tuning.
+- Transcription options include direct Nemo API mode and detailed output flags.
+- UI includes transcript view, raw JSON output, metrics, and local history.
+- Settings and theme preferences are persisted in `localStorage`.
 
 ## License
 
-See the repository for license information.
+See the repository license.

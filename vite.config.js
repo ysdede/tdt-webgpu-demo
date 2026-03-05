@@ -6,6 +6,7 @@ import { execSync } from 'child_process';
 import { createRequire } from 'module';
 
 const useLocalSource = process.env.TRANSFORMERS_LOCAL === 'true';
+const basePath = process.env.VITE_BASE_PATH || '/';
 const require = createRequire(import.meta.url);
 
 function readJson(filePath) {
@@ -98,6 +99,7 @@ if (!transformersVersion) {
 
 export default defineConfig({
   plugins: [react()],
+  base: basePath,
   server: {
     port: 5173,
     headers: {
