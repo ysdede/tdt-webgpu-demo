@@ -110,6 +110,9 @@ jobs:
           - asr
           - nemo
           - nemo-conformer-tdt
+          custom_headers:
+            cross-origin-embedder-policy: require-corp
+            cross-origin-opener-policy: same-origin
           preload_from_hub:
           - ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4
           ---
