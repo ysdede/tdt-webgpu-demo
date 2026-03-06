@@ -74,16 +74,39 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf hf_export && mkdir -p hf_export
-          cp -r tdt-webgpu-demo/dist hf_export/dist
 
-          # Keep large wasm artifacts in LFS for HF repo limits.
+          # Copy demo source (exclude dev artifacts), like parakeet.js-demo
+          rsync -a \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.git' \
+            --exclude='.pytest_cache' \
+            --exclude='.serena' \
+            --exclude='.vscode' \
+            --exclude='docs' \
+            --exclude='scripts' \
+            --exclude='tmp_hf_space' \
+            tdt-webgpu-demo/ hf_export/
+
+          # Remove COI serviceworker (HF provides headers via custom_headers)
+          sed -i '/coi-serviceworker\.js/d' hf_export/index.html
+          rm -f hf_export/public/coi-serviceworker.js 2>/dev/null || true
+
+          # Remove lockfile so HF install resolves deps (app_build_command)
+          rm -f hf_export/package-lock.json
+
+          # Keep large wasm artifacts in LFS for HF repo limits
           cat > hf_export/.gitattributes << 'ATTRSEOF'
           *.wasm filter=lfs diff=lfs merge=lfs -text
           ATTRSEOF
 
-          # Avoid forcing cross-origin isolation on Spaces.
+          # Also push pre-built dist so app works before/without HF build
+          cp -r tdt-webgpu-demo/dist hf_export/dist
           sed -i '/coi-serviceworker\.js/d' hf_export/dist/index.html
           rm -f hf_export/dist/coi-serviceworker.js
+
+          echo "HF export ready (source + dist)"
+          find hf_export -maxdepth 2 -not -path '*/node_modules/*' | head -40
 
       - name: Write HF-specific files
         run: |
@@ -97,6 +120,7 @@ jobs:
           pinned: true
           header: mini
           fullWidth: true
+          app_build_command: npm install && npm run build
           app_file: dist/index.html
           license: mit
           short_description: Browser ASR demo built from transformers.js TDT branch
@@ -128,6 +152,90 @@ jobs:
           - Demo repo: `ysdede/tdt-webgpu-demo`
           - Transformers source: `ysdede/transformers.js@v4-nemo-conformer-tdt-main-r2`
           READMEEOF
+
+          # HF package.json: npm deps only (no local transformers)
+          cat > hf_export/package.json << 'PKGEOF'
+          {
+            "name": "transformers-v4-parakeet-tdt-demo",
+            "version": "1.0.0",
+            "private": true,
+            "type": "module",
+            "scripts": {
+              "dev": "vite",
+              "build": "vite build",
+              "preview": "vite preview"
+            },
+            "dependencies": {
+              "@huggingface/transformers": "next",
+              "react": "^18.2.0",
+              "react-dom": "^18.2.0"
+            },
+            "devDependencies": {
+              "@tailwindcss/forms": "^0.5.11",
+              "@tailwindcss/typography": "^0.5.19",
+              "@vitejs/plugin-react": "^4.0.0",
+              "autoprefixer": "^10.4.27",
+              "postcss": "^8.5.6",
+              "tailwindcss": "^3.4.19",
+              "vite": "^7.3.1",
+              "vite-plugin-top-level-await": "^1.6.0",
+              "vite-plugin-wasm": "^3.5.0"
+            }
+          }
+          PKGEOF
+
+          # HF vite.config.js: no local transformers path, ORT from node_modules
+          cat > hf_export/vite.config.js << 'VITEEOF'
+          import { defineConfig } from 'vite';
+          import react from '@vitejs/plugin-react';
+          import path from 'path';
+          import fs from 'fs';
+          import { createRequire } from 'module';
+
+          const require = createRequire(import.meta.url);
+          const basePath = process.env.VITE_BASE_PATH || '/';
+
+          function ensureOrtRuntimeAssets(ortRoot, appRoot) {
+            const distDir = path.join(ortRoot, 'dist');
+            const publicOrtDir = path.join(appRoot, 'public', 'ort');
+            const files = ['ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm'];
+            if (!fs.existsSync(distDir)) return;
+            fs.mkdirSync(publicOrtDir, { recursive: true });
+            for (const name of files) {
+              const src = path.join(distDir, name);
+              const dst = path.join(publicOrtDir, name);
+              if (fs.existsSync(src)) fs.copyFileSync(src, dst);
+            }
+          }
+
+          let ortWeb = path.join(__dirname, 'node_modules', 'onnxruntime-web');
+          try {
+            ortWeb = path.dirname(require.resolve('onnxruntime-web/package.json', { paths: [__dirname] }));
+          } catch (_) {}
+          ensureOrtRuntimeAssets(ortWeb, __dirname);
+
+          let transformersVersion = 'unknown';
+          try {
+            const pkg = require(path.join(__dirname, 'node_modules/@huggingface/transformers/package.json'));
+            transformersVersion = pkg.version || 'unknown';
+          } catch (_) {}
+
+          export default defineConfig({
+            plugins: [react()],
+            base: basePath,
+            server: {
+              port: 5173,
+              headers: {
+                'Cross-Origin-Opener-Policy': 'same-origin',
+                'Cross-Origin-Embedder-Policy': 'credentialless',
+              },
+            },
+            define: {
+              __TRANSFORMERS_VERSION__: JSON.stringify(transformersVersion),
+              __TRANSFORMERS_SOURCE__: JSON.stringify('npm'),
+            },
+          });
+          VITEEOF
 
       - name: Push to HF Space
         env:
