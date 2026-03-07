@@ -253,8 +253,8 @@ export function buildRandomSamplePlan(catalog, sampleCount = 12, seed = Date.now
 
   // Always cover both edges so the random run preserves the true duration range.
   pushEntry(sorted[0]);
-  if (safeCount > 1) pushEntry(sorted[1]);
-  if (safeCount > 2) pushEntry(sorted[sorted.length - 1]);
+  if (safeCount > 1) pushEntry(sorted[sorted.length - 1]);
+  if (safeCount > 2) pushEntry(sorted[1]);
   if (safeCount > 3) pushEntry(sorted[sorted.length - 2]);
 
   const remaining = Math.max(0, Math.min(safeCount, sorted.length) - picked.length);
@@ -382,6 +382,7 @@ export function suggestDurationTargets(catalog, {
   maxPoints = 24,
   growthFactor = Math.sqrt(1.8),
 } = {}) {
+  const safeMaxPoints = Math.max(1, Math.floor(Number(maxPoints) || 1));
   const durations = catalog
     .map((entry) => entry?.durationSec)
     .filter((value) => Number.isFinite(value) && value > 0)
@@ -402,7 +403,7 @@ export function suggestDurationTargets(catalog, {
   }
 
   let current = minSec;
-  while (current < maxSec && targets.length < maxPoints - 1) {
+  while (current < maxSec && targets.length < safeMaxPoints - 1) {
     const rounded = roundTarget(current);
     if (rounded != null) {
       targets.push(rounded);
@@ -424,7 +425,16 @@ export function suggestDurationTargets(catalog, {
     }
   }
 
-  return mergeTargetDurations(targets);
+  const merged = mergeTargetDurations(targets);
+  if (merged.length <= safeMaxPoints) return merged;
+
+  // Uniformly downsample to safeMaxPoints, always keeping first and last.
+  if (safeMaxPoints === 1) return [merged[0]];
+  const lastIndex = merged.length - 1;
+  return Array.from({ length: safeMaxPoints }, (_, i) => {
+    const sourceIndex = Math.round((i / (safeMaxPoints - 1)) * lastIndex);
+    return merged[sourceIndex];
+  }).filter((value, i, arr) => i === 0 || value !== arr[i - 1]);
 }
 
 export function refineTargetsFromRuns(runs, {
