@@ -141,3 +141,93 @@ input[type="file"]::file-selector-button:hover {
 .dark .json-output::-webkit-scrollbar-thumb {
   background: #4b5563;
 }
+
+/* Dual-range slider for Duration Range */
+.dual-range-wrap {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.dual-range-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: #d1d5db;
+}
+
+.dark .dual-range-track {
+  background: #374151;
+}
+
+.dual-range-fill {
+  position: absolute;
+  height: 100%;
+  border-radius: 2px;
+  background: #546a7b;
+}
+
+.dark .dual-range-fill {
+  background: #5a6b7a;
+}
+
+.dual-range-input {
+  position: absolute;
+  width: 100%;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+.dual-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #546a7b;
+  border: 2px solid #fff;
+  cursor: pointer;
+  pointer-events: all;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+  position: relative;
+  z-index: 1;
+}
+
+.dark .dual-range-input::-webkit-slider-thumb {
+  background: #5a6b7a;
+  border-color: #1f2937;
+}
+
+.dual-range-input::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #546a7b;
+  border: 2px solid #fff;
+  cursor: pointer;
+  pointer-events: all;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+}
+
+.dark .dual-range-input::-moz-range-thumb {
+  background: #5a6b7a;
+  border-color: #1f2937;
+}
+
+.dual-range-input:disabled::-webkit-slider-thumb {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dual-range-input:disabled::-moz-range-thumb {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

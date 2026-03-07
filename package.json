@@ -9,7 +9,8 @@
     "build": "vite build",
     "build:local": "cross-env TRANSFORMERS_LOCAL=true vite build",
     "preview": "vite preview",
-    "test:node": "node ./scripts/node-asr-test.mjs"
+    "test:node": "node ./scripts/node-asr-test.mjs",
+    "test:window-overlap": "node ./scripts/window-overlap-sim-test.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "next",
