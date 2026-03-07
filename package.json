@@ -10,6 +10,8 @@
     "build:local": "cross-env TRANSFORMERS_LOCAL=true vite build",
     "preview": "vite preview",
     "test:node": "node ./scripts/node-asr-test.mjs",
+    "test:nemo": "node ./scripts/node-nemo-inspect.mjs",
+    "test:whisper": "node ./scripts/node-whisper-inspect.mjs",
     "test:window-overlap": "node ./scripts/window-overlap-sim-test.mjs"
   },
   "dependencies": {
