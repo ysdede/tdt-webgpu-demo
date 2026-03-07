@@ -1,88 +1,110 @@
 # Return granularity in Conformer TDT (transformers.js)
 
-The Nemo Conformer TDT (Token-and-Duration Transducer) implementation in transformers.js does **not** use a single “granularity” option. Output detail is controlled by decode options passed to the model’s `transcribe()` (or indirectly via the ASR pipeline).
+The Nemo Conformer TDT implementation now follows the shared `automatic-speech-recognition` pipeline contract more closely:
+
+- **pipeline mode** returns `{ text }` by default and `{ text, chunks }` when timestamps are requested
+- **direct model calls** keep the richer Nemo-native outputs such as `words`, `tokens`, confidences, metrics, and debug fields
 
 ---
 
-## 1. Where it’s set
+## 1. Pipeline mode
 
-- **Pipeline** (`pipeline('automatic-speech-recognition', ...)` then `pipe(audio, options)`): only **`return_timestamps`** is exposed. When `true`, the pipeline calls the model with utterance-level timestamps plus words and metrics (see below).
-- **Direct model call** (`model.transcribe(inputs, decode_options)`): you pass **decode_options** to control exactly what is returned (utterance, words, tokens, metrics, debug).
-
----
-
-## 2. Decode options (granularity levels)
-
-These are the options that effectively define “return granularity” for Conformer TDT.
-
-| Option | Type | Default | Effect |
-|--------|------|--------|--------|
-| **`return_timestamps`** | `boolean` | `true` | Utterance-level: adds `utterance_confidence`, `utterance_timestamp`, `confidence_scores` (token/word/frame averages). Base for words/tokens. |
-| **`return_words`** | `boolean` | `false` | Word-level: adds `words` array. **Requires `return_timestamps`**. |
-| **`return_tokens`** | `boolean` | `false` | Token-level: adds `tokens` array. **Requires `return_timestamps`**. |
-| **`return_metrics`** | `boolean` | `false` | Timing: adds `metrics` (preprocess_ms, encode_ms, decode_ms, etc.). Independent of timestamps. |
-
-**Output by level:**
-
-- **`return_timestamps: false`** → `{ text, is_final }` only (plus `metrics` if `return_metrics`).
-- **`return_timestamps: true`** → same + `utterance_confidence`, `utterance_timestamp`, `confidence_scores`.
-- **`return_timestamps: true` + `return_words: true`** → also `words` (each with `text`, `start_time`, `end_time`, optional `confidence`).
-- **`return_timestamps: true` + `return_tokens: true`** → also `tokens` (id, token, raw_token, is_word_start, start_time, end_time, optional confidence).
-
-Optional debug flags (independent): `returnFrameConfidences`, `returnFrameIndices`, `returnLogProbs`, `returnTdtSteps`.  
-Optional: **`timeOffset`** (seconds) added to all timestamps.
-
----
-
-## 3. Pipeline vs direct call
-
-**Pipeline (limited granularity):**
+Pipeline mode is for task-level compatibility:
 
 ```js
 const pipe = await pipeline('automatic-speech-recognition', modelId);
-// Only return_timestamps is a pipeline argument:
-const out = await pipe(audio, { return_timestamps: true });
-// Pipeline internally uses: return_timestamps, return_words: true, return_metrics: true
 ```
 
-You cannot set `return_tokens` or turn off words/metrics from the pipeline kwargs.
+Supported timestamp behaviors:
 
-**Direct model call (full control):**
+| Option | Output |
+|--------|--------|
+| `return_timestamps: false` | `{ text }` |
+| `return_timestamps: true` | `{ text, chunks }` with segment-level timestamped chunks |
+| `return_timestamps: 'word'` | `{ text, chunks }` with word-level timestamped chunks |
+
+Examples:
+
+```js
+await pipe(audio);
+// { text }
+
+await pipe(audio, { return_timestamps: true });
+// { text, chunks: [{ text, timestamp: [start, end] }, ...] }
+
+await pipe(audio, { return_timestamps: 'word' });
+// { text, chunks: [{ text, timestamp: [start, end] }, ...] }
+```
+
+Notes:
+
+- Pipeline mode does **not** expose `return_words`, `return_tokens`, or the debug flags.
+- For long audio, Nemo may internally use windowing/merge, but the public pipeline shape remains the same.
+
+---
+
+## 2. Direct model call
+
+Direct calls expose the full Nemo decode options:
 
 ```js
 const pipe = await pipeline('automatic-speech-recognition', modelId);
 const inputs = await pipe.processor(audio);
 const out = await pipe.model.transcribe(inputs, {
   tokenizer: pipe.tokenizer,
-  return_timestamps: true,   // utterance-level
-  return_words: true,        // word-level
-  return_tokens: true,       // token-level
+  return_timestamps: true,
+  return_words: true,
+  return_tokens: true,
   return_metrics: true,
   timeOffset: 0,
 });
 ```
 
-Use direct `model.transcribe(..., decode_options)` when you need token-level output or want to disable words/metrics.
+Main options:
+
+| Option | Effect |
+|--------|--------|
+| `return_timestamps` | Enables utterance timestamps/confidence output |
+| `return_words` | Adds `words` |
+| `return_tokens` | Adds `tokens` |
+| `return_metrics` | Adds timing metrics |
+| `returnFrameConfidences` | Debug frame confidences |
+| `returnFrameIndices` | Debug frame indices |
+| `returnLogProbs` | Debug log probs |
+| `returnTdtSteps` | Debug TDT step trace |
+| `timeOffset` | Adds a global timestamp offset in seconds |
+
+Typical direct outputs:
+
+- `{ text }`
+- `{ text, utterance_timestamp, utterance_confidence, confidence_scores }`
+- same plus `words`
+- same plus `tokens`
+- same plus `metrics` and debug fields
 
 ---
 
-## 4. Example project (this repo)
+## 3. Demo app behavior
 
-The **transformers-v4-parakeet-demo** app shows both usages and exposes the decode options in the UI:
+The demo app in this repo now mirrors that split:
 
-- **Transcription options** panel: “Direct Nemo call” uses `model.transcribe()` with:
-  - **Return timestamps** → `return_timestamps`
-  - **Words** → `return_words`
-  - **Tokens** → `return_tokens`
-  - **Metrics** → `return_metrics`
-  - **Frame conf. / Frame idx / Log probs / TDT steps** → debug flags
-  - **Time offset** → `timeOffset`
-
-- With “Direct Nemo call” **off**, the app uses the pipeline and only **Return timestamps** is applied (pipeline then adds words + metrics internally).
+- **Direct Nemo call: on**
+  - `Return timestamps` is a boolean
+  - `Words`, `Tokens`, `Metrics`, and debug flags are available
+- **Direct Nemo call: off**
+  - the app uses pipeline mode
+  - `Pipeline timestamps` has three options:
+    - `off`
+    - `segments`
+    - `words`
 
 Relevant code:
 
-- **App (direct call):** `src/App.jsx` — `transcribeInput()` builds `decode_options` from UI state and calls `t.model.transcribe(inputs, { tokenizer, return_timestamps: rt, return_words: returnWords, return_tokens: returnTokens, ... })`.
-- **Node script:** `scripts/node-asr-test.mjs` — uses pipeline only; `--timestamps` maps to `return_timestamps: true` in the pipeline call.
+- [App.jsx](N:\github\ysdede\transformers-v4-parakeet-demo\src\App.jsx)
 
-**Summary:** To set “return granularity” in transformers.js Conformer TDT, use **`return_timestamps`**, **`return_words`**, and **`return_tokens`** in the **decode_options** of `model.transcribe()`. The pipeline only exposes `return_timestamps`; for word/token level and full control, call `model.transcribe()` directly as in the demo.
+---
+
+## 4. Summary
+
+Use **pipeline mode** when you want compatibility with the standard ASR task API.  
+Use **direct `model.transcribe()`** when you want the full Nemo-native outputs.

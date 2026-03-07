@@ -1321,6 +1321,9 @@ export default function App() {
 
   const [direct, setDirect] = useState(initialSettings.direct !== undefined ? Boolean(initialSettings.direct) : true);
   const [rt, setRt] = useState(initialSettings.rt !== undefined ? Boolean(initialSettings.rt) : true);
+  const [pipelineTimestampMode, setPipelineTimestampMode] = useState(
+    initialSettings.pipelineTimestampMode || (initialSettings.rt ? 'segments' : 'none')
+  );
   const [metrics, setMetrics] = useState(initialSettings.metrics !== undefined ? Boolean(initialSettings.metrics) : true);
 
   const [returnWords, setReturnWords] = useState(initialSettings.returnWords !== undefined ? Boolean(initialSettings.returnWords) : true);
@@ -1497,7 +1500,7 @@ export default function App() {
     saveSettings({
       activeView,
       modelId, mode, encDev, encDtype, decDtype, wasmThreads,
-      direct, rt, metrics,
+      direct, rt, pipelineTimestampMode, metrics,
       returnWords, returnTokens, returnFrameConf, frameIdx, logProbs, tdtSteps,
       benchmarkTargetMode, benchmarkRandomCount, benchmarkRandomSeed, benchmarkBucketSize, benchmarkOverlapSec,
       benchmarkMinDurationSec: effectiveBenchmarkMinDurationSec,
@@ -1510,7 +1513,7 @@ export default function App() {
   }, [
     activeView,
     modelId, mode, encDev, encDtype, decDtype, wasmThreads,
-    direct, rt, metrics,
+    direct, rt, pipelineTimestampMode, metrics,
     returnWords, returnTokens, returnFrameConf, frameIdx, logProbs, tdtSteps,
     benchmarkTargetMode, benchmarkRandomCount, benchmarkRandomSeed, benchmarkBucketSize, benchmarkOverlapSec,
     benchmarkMinDurationSec, benchmarkMaxDurationSec,
@@ -1847,7 +1850,11 @@ export default function App() {
         timeOffset: Number(offset) || 0,
       });
     } else {
-      const p = rt ? { return_timestamps: true } : {};
+      const p = pipelineTimestampMode === 'segments'
+        ? { return_timestamps: true }
+        : pipelineTimestampMode === 'words'
+          ? { return_timestamps: 'word' }
+          : {};
       out = await t(mono, p);
     }
 
@@ -2510,10 +2517,23 @@ export default function App() {
                   <span className="text-sm text-gray-700 dark:text-gray-300">Direct Nemo call</span>
                   <Toggle id="direct" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Return timestamps</span>
-                  <Toggle id="rt" checked={rt} onChange={(e) => setRt(e.target.checked)} />
-                </div>
+
+                {direct ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Return timestamps</span>
+                    <Toggle id="rt" checked={rt} onChange={(e) => setRt(e.target.checked)} />
+                  </div>
+                ) : (
+                  <SelectField
+                    label="Pipeline timestamps"
+                    value={pipelineTimestampMode}
+                    onChange={(e) => setPipelineTimestampMode(e.target.value)}
+                  >
+                    <option value="none">off</option>
+                    <option value="segments">segments</option>
+                    <option value="words">words</option>
+                  </SelectField>
+                )}
 
                 <div className="border-t border-border-light dark:border-border-dark pt-2 mt-1">
                   <p className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">Detail Flags</p>
