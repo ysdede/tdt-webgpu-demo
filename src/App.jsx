@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Transformers from '@huggingface/transformers';
 import './App.css';
 import {
+  CUSTOM_RESAMPLER_QUALITY_OPTIONS,
+  DEFAULT_CUSTOM_RESAMPLER_QUALITY,
+  prepareBrowserAudioInput,
+} from './audio-prep';
+import {
   benchmarkSummaryToCsv,
   buildRandomSamplePlan,
   buildTargetSamplePlan,
@@ -20,6 +25,11 @@ import {
 const MODEL_DEFAULT = 'ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4';
 const DECODER_DEVICE = 'wasm';
 const DTYPES = ['fp16', 'int8', 'fp32'];
+const AUDIO_PREP_BACKEND_DEFAULT = 'custom-js';
+const AUDIO_PREP_CUSTOM_RESAMPLER_DEFAULT = DEFAULT_CUSTOM_RESAMPLER_QUALITY;
+const NEMO_PIPELINE_WINDOW_DEFAULT_S = 90;
+const NEMO_PIPELINE_WINDOW_MIN_S = 20;
+const NEMO_PIPELINE_WINDOW_MAX_S = 180;
 
 const SETTINGS_STORAGE_KEY = 'nemo-tdt-demo.settings.v1';
 const BENCHMARK_HANDLE_DB = 'nemo-tdt-demo.benchmark-folder';
@@ -96,6 +106,12 @@ const detectMaxCores = () => {
   return Number.isFinite(c) && c > 0 ? Math.floor(c) : 1;
 };
 
+const clampPipelineWindowSec = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return NEMO_PIPELINE_WINDOW_DEFAULT_S;
+  return Math.max(NEMO_PIPELINE_WINDOW_MIN_S, Math.min(NEMO_PIPELINE_WINDOW_MAX_S, numeric));
+};
+
 const clampThreadCount = (value, maxCores) => {
   const n = Number.parseInt(String(value), 10);
   if (!Number.isFinite(n)) return 1;
@@ -155,6 +171,10 @@ async function ensureLocalOrtWasmBlobs() {
 
 const toJSON = (x) => { try { return JSON.stringify(x, null, 2); } catch { return String(x); } };
 const textOf = (o) => (typeof o === 'string' ? o : o?.text ?? '');
+const indentCode = (text, spaces = 2) => String(text)
+  .split('\n')
+  .map((line) => `${' '.repeat(spaces)}${line}`)
+  .join('\n');
 const averageOf = (values) => {
   const valid = values.filter(Number.isFinite);
   if (valid.length === 0) return null;
@@ -271,27 +291,18 @@ function estimateInputPayloadMetrics({ mono, sampleRate, inputs, encoderDtype })
   };
 }
 
-async function decodeAudio(input, sampleRate) {
-  if (input instanceof Float32Array) return input;
-  let ab;
-  if (typeof input === 'string') {
-    const r = await fetch(input);
-    if (!r.ok) throw new Error(`Audio fetch failed: ${r.status}`);
-    ab = await r.arrayBuffer();
-  } else {
-    ab = await input.arrayBuffer();
-  }
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  const ctx = new Ctx({ sampleRate });
-  try {
-    const b = await ctx.decodeAudioData(ab.slice(0));
-    const out = new Float32Array(b.length);
-    for (let c = 0; c < b.numberOfChannels; c++) {
-      const d = b.getChannelData(c);
-      for (let i = 0; i < b.length; i++) out[i] += d[i] / b.numberOfChannels;
-    }
-    return out;
-  } finally { await ctx.close(); }
+async function prepareAudioInput(
+  input,
+  sampleRate,
+  backend = AUDIO_PREP_BACKEND_DEFAULT,
+  customResamplerQuality = AUDIO_PREP_CUSTOM_RESAMPLER_DEFAULT,
+) {
+  return await prepareBrowserAudioInput(input, {
+    targetSampleRate: sampleRate,
+    backend,
+    readAudio: Transformers.read_audio,
+    customResamplerQuality,
+  });
 }
 
 function readUInt32LE(view, offset) {
@@ -597,17 +608,41 @@ function MetricRow({ items }) {
 
 function PerformanceMetrics({ stats }) {
   const fmt = (v, unit) => (v != null && Number.isFinite(v) ? `${v.toFixed(1)}${unit}` : '-');
-  const items = [
+  const primaryItems = [
+    { label: 'Mode', value: stats.mode || '-' },
+    { label: 'Audio', value: stats.audioDurationSec != null ? formatCompactDuration(stats.audioDurationSec) : '-' },
+    { label: 'Audio prep', value: fmt(stats.audioPrepMs, 'ms') },
+    { label: 'Prep mode', value: stats.audioPrepBackend || '-' },
+    { label: 'Processor', value: fmt(stats.processorMs, 'ms') },
+    { label: 'Call', value: fmt(stats.callMs, 'ms') },
+    { label: 'Infer wall', value: fmt(stats.inferenceWallMs, 'ms') },
+    { label: 'End-to-end', value: fmt(stats.endToEndMs, 'ms') },
+    { label: 'Infer RTFx', value: stats.inferenceRtfx != null && Number.isFinite(stats.inferenceRtfx) ? `${stats.inferenceRtfx.toFixed(1)}x` : null },
+    { label: 'End-to-end RTFx', value: stats.endToEndRtfx != null && Number.isFinite(stats.endToEndRtfx) ? `${stats.endToEndRtfx.toFixed(1)}x` : null },
+  ];
+  const secondaryItems = [
+    { label: 'Input rate', value: stats.audioInputSampleRate != null ? `${stats.audioInputSampleRate} Hz` : '-' },
+    { label: 'Output rate', value: stats.audioOutputSampleRate != null ? `${stats.audioOutputSampleRate} Hz` : '-' },
+    { label: 'Prep path', value: stats.audioPrepStrategy || '-' },
+    { label: 'Decode', value: fmt(stats.audioDecodeMs, 'ms') },
+    { label: 'Downmix', value: fmt(stats.audioDownmixMs, 'ms') },
+    { label: 'Resample', value: fmt(stats.audioResampleMs, 'ms') },
+    { label: 'Resampler', value: stats.audioResampler || '-' },
+    { label: 'SRC quality', value: stats.audioResamplerQuality || '-' },
     { label: 'Preprocess', value: fmt(stats.preprocessMs, 'ms') },
     { label: 'Encode', value: fmt(stats.encodeMs, 'ms') },
-    { label: 'Decode', value: fmt(stats.decodeMs, 'ms') },
+    { label: 'Model decode', value: fmt(stats.decodeMs, 'ms') },
     { label: 'Tokenize', value: fmt(stats.tokenizeMs, 'ms') },
-    { label: 'Total', value: fmt(stats.totalMs, 'ms') },
-    { label: 'RTFx', value: stats.rtfx != null && Number.isFinite(stats.rtfx) ? `${stats.rtfx.toFixed(1)}x` : null },
+    { label: 'Model total', value: fmt(stats.totalMs, 'ms') },
+    { label: 'Model RTFx', value: stats.rtfx != null && Number.isFinite(stats.rtfx) ? `${stats.rtfx.toFixed(1)}x` : null },
+    { label: 'Window', value: stats.pipelineWindowSec != null ? `${stats.pipelineWindowSec.toFixed(0)}s` : null },
   ];
   return (
     <div className="bg-card-light dark:bg-card-dark rounded-xl border border-border-light dark:border-border-dark px-4 py-3">
-      <MetricRow items={items} />
+      <MetricRow items={primaryItems} />
+      <div className="mt-2 pt-2 border-t border-border-light dark:border-border-dark">
+        <MetricRow items={secondaryItems} />
+      </div>
     </div>
   );
 }
@@ -1321,8 +1356,22 @@ export default function App() {
 
   const [direct, setDirect] = useState(initialSettings.direct !== undefined ? Boolean(initialSettings.direct) : true);
   const [rt, setRt] = useState(initialSettings.rt !== undefined ? Boolean(initialSettings.rt) : true);
+  const [audioPrepBackend, setAudioPrepBackend] = useState(
+    initialSettings.audioPrepBackend || AUDIO_PREP_BACKEND_DEFAULT
+  );
+  const [audioPrepQuality, setAudioPrepQuality] = useState(
+    initialSettings.audioPrepQuality || AUDIO_PREP_CUSTOM_RESAMPLER_DEFAULT
+  );
   const [pipelineTimestampMode, setPipelineTimestampMode] = useState(
     initialSettings.pipelineTimestampMode || (initialSettings.rt ? 'segments' : 'none')
+  );
+  const [pipelineWindowOverrideEnabled, setPipelineWindowOverrideEnabled] = useState(
+    initialSettings.pipelineWindowOverrideEnabled !== undefined
+      ? Boolean(initialSettings.pipelineWindowOverrideEnabled)
+      : false
+  );
+  const [pipelineWindowOverrideSec, setPipelineWindowOverrideSec] = useState(
+    clampPipelineWindowSec(initialSettings.pipelineWindowOverrideSec)
   );
   const [metrics, setMetrics] = useState(initialSettings.metrics !== undefined ? Boolean(initialSettings.metrics) : true);
 
@@ -1340,6 +1389,7 @@ export default function App() {
   const [status, setStatus] = useState('Idle');
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [lastRunMetrics, setLastRunMetrics] = useState(null);
   const [history, setHistory] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [benchmarkFiles, setBenchmarkFiles] = useState([]);
@@ -1426,6 +1476,7 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(getInitialDarkMode(initialSettings));
   const [downloadProgress, setDownloadProgress] = useState(null); // {pct, loaded, total, file}
   const [isCached, setIsCached] = useState(null); // null=unknown, true/false
+  const usingNpmTransformers = SOURCE === 'npm';
 
   useEffect(() => {
     if (darkMode) {
@@ -1500,7 +1551,7 @@ export default function App() {
     saveSettings({
       activeView,
       modelId, mode, encDev, encDtype, decDtype, wasmThreads,
-      direct, rt, pipelineTimestampMode, metrics,
+      direct, rt, audioPrepBackend, audioPrepQuality, pipelineTimestampMode, pipelineWindowOverrideEnabled, pipelineWindowOverrideSec, metrics,
       returnWords, returnTokens, returnFrameConf, frameIdx, logProbs, tdtSteps,
       benchmarkTargetMode, benchmarkRandomCount, benchmarkRandomSeed, benchmarkBucketSize, benchmarkOverlapSec,
       benchmarkMinDurationSec: effectiveBenchmarkMinDurationSec,
@@ -1513,7 +1564,7 @@ export default function App() {
   }, [
     activeView,
     modelId, mode, encDev, encDtype, decDtype, wasmThreads,
-    direct, rt, pipelineTimestampMode, metrics,
+    direct, rt, audioPrepBackend, audioPrepQuality, pipelineTimestampMode, pipelineWindowOverrideEnabled, pipelineWindowOverrideSec, metrics,
     returnWords, returnTokens, returnFrameConf, frameIdx, logProbs, tdtSteps,
     benchmarkTargetMode, benchmarkRandomCount, benchmarkRandomSeed, benchmarkBucketSize, benchmarkOverlapSec,
     benchmarkMinDurationSec, benchmarkMaxDurationSec,
@@ -1528,22 +1579,190 @@ export default function App() {
     const tokens = Array.isArray(result?.tokens) ? result.tokens.length : null;
     const metricsOut = result?.metrics ?? null;
     const rtf = metricsOut?.rtf ?? null;
-    const rtfx = metricsOut?.rtf_x ?? (rtf && Number.isFinite(rtf) && rtf > 0 ? 1 / rtf : null);
+    const rtfx = metricsOut?.rtfX ?? (rtf && Number.isFinite(rtf) && rtf > 0 ? 1 / rtf : null);
+    const audioDurationSec = lastRunMetrics?.durationSec ?? null;
+    const inferenceRtf = lastRunMetrics?.inferenceRtf ?? rtf ?? null;
+    const inferenceRtfx =
+      lastRunMetrics?.inferenceRtfx ??
+      (inferenceRtf && Number.isFinite(inferenceRtf) && inferenceRtf > 0 ? 1 / inferenceRtf : null);
+    const endToEndRtf = lastRunMetrics?.endToEndRtf ?? null;
+    const endToEndRtfx =
+      lastRunMetrics?.endToEndRtfx ??
+      (endToEndRtf && Number.isFinite(endToEndRtf) && endToEndRtf > 0 ? 1 / endToEndRtf : null);
     return {
+      mode: lastRunMetrics?.mode ?? (direct ? 'direct' : 'pipeline'),
       textLen: textOf(result).length,
       words,
       tokens,
-      tAvg: result?.confidence_scores?.token_avg ?? null,
-      wAvg: result?.confidence_scores?.word_avg ?? null,
-      preprocessMs: metricsOut?.preprocess_ms ?? null,
-      encodeMs: metricsOut?.encode_ms ?? null,
-      decodeMs: metricsOut?.decode_ms ?? null,
-      tokenizeMs: metricsOut?.tokenize_ms ?? null,
-      totalMs: metricsOut?.total_ms ?? null,
+      audioDurationSec,
+      audioPrepMs: lastRunMetrics?.audioPrepMs ?? null,
+      audioPrepBackend: lastRunMetrics?.audioPrepBackend ?? null,
+      audioPrepStrategy: lastRunMetrics?.audioPrepStrategy ?? null,
+      audioDecodeMs: lastRunMetrics?.audioDecodeMs ?? null,
+      audioDownmixMs: lastRunMetrics?.audioDownmixMs ?? null,
+      audioResampleMs: lastRunMetrics?.audioResampleMs ?? null,
+      audioResampler: lastRunMetrics?.audioResampler ?? null,
+      audioResamplerQuality: lastRunMetrics?.audioResamplerQuality ?? null,
+      audioInputSampleRate: lastRunMetrics?.audioInputSampleRate ?? null,
+      audioOutputSampleRate: lastRunMetrics?.audioOutputSampleRate ?? null,
+      processorMs: lastRunMetrics?.processorMs ?? null,
+      callMs: lastRunMetrics?.callMs ?? null,
+      inferenceWallMs: lastRunMetrics?.inferenceWallMs ?? null,
+      endToEndMs: lastRunMetrics?.endToEndMs ?? null,
+      inferenceRtfx,
+      endToEndRtfx,
+      utteranceConfidence: result?.confidence?.utterance ?? null,
+      wordConfidenceAverage: result?.confidence?.wordAverage ?? null,
+      preprocessMs: metricsOut?.preprocessMs ?? null,
+      encodeMs: metricsOut?.encodeMs ?? null,
+      decodeMs: metricsOut?.decodeMs ?? null,
+      tokenizeMs: metricsOut?.tokenizeMs ?? null,
+      totalMs: metricsOut?.totalMs ?? null,
       rtf,
       rtfx,
+      pipelineWindowSec:
+        !direct && pipelineWindowOverrideEnabled
+          ? pipelineWindowOverrideSec
+          : null,
     };
-  }, [result]);
+  }, [result, lastRunMetrics, direct, pipelineWindowOverrideEnabled, pipelineWindowOverrideSec]);
+
+  const pipelineCallOptions = useMemo(() => {
+    const options = (
+      pipelineTimestampMode === 'segments'
+        ? { return_timestamps: true }
+        : pipelineTimestampMode === 'words'
+          ? { return_timestamps: 'word' }
+          : {}
+    );
+    if (pipelineWindowOverrideEnabled) {
+      options.chunk_length_s = pipelineWindowOverrideSec;
+    }
+    return options;
+  }, [pipelineTimestampMode, pipelineWindowOverrideEnabled, pipelineWindowOverrideSec]);
+
+  const pipelineContractSummary = useMemo(() => {
+    if (pipelineTimestampMode === 'segments') {
+      return {
+        title: 'Pipeline sentences',
+        shape: '{ text, chunks }',
+        detail: 'Returns finalized sentence-like chunks with [start, end] timestamps.',
+      };
+    }
+    if (pipelineTimestampMode === 'words') {
+      return {
+        title: 'Pipeline words',
+        shape: '{ text, chunks }',
+        detail: 'Returns a flat word list with [start, end] timestamps.',
+      };
+    }
+    return {
+      title: 'Pipeline text only',
+      shape: '{ text }',
+      detail: 'Returns only the merged transcript with no public chunk list.',
+    };
+  }, [pipelineTimestampMode]);
+
+  const directOutputFields = useMemo(() => {
+    const fields = ['text'];
+    if (rt) {
+      fields.push('utteranceTimestamp', 'confidence');
+      if (returnWords) fields.push('words');
+      if (returnTokens) fields.push('tokens');
+    }
+    if (metrics) fields.push('metrics');
+    if (returnFrameConf || frameIdx || logProbs || tdtSteps) fields.push('debug');
+    return fields;
+  }, [rt, returnWords, returnTokens, metrics, returnFrameConf, frameIdx, logProbs, tdtSteps]);
+
+  const directContractSummary = useMemo(() => ({
+    title: 'Direct Nemo output',
+    shape: `{ ${directOutputFields.join(', ')} }`,
+    detail: 'Calls model.transcribe() and keeps the richer NeMo-style JS output surface.',
+  }), [directOutputFields]);
+
+  const currentContractSummary = direct ? directContractSummary : pipelineContractSummary;
+
+  const loadOptionsSnippet = useMemo(() => toJSON({
+    device: { encoder_model: encDev, decoder_model_merged: DECODER_DEVICE },
+    dtype: { encoder_model: encDtype, decoder_model_merged: decDtype },
+  }), [encDev, encDtype, decDtype]);
+
+  const pipelineOptionsSnippet = useMemo(
+    () => toJSON(pipelineCallOptions),
+    [pipelineCallOptions]
+  );
+
+  const directOptionsSnippet = useMemo(() => [
+    '{',
+    '  tokenizer: transcriber.tokenizer,',
+    `  returnTimestamps: ${rt},`,
+    `  returnWords: ${rt ? returnWords : false},`,
+    `  returnTokens: ${rt ? returnTokens : false},`,
+    `  returnMetrics: ${metrics},`,
+    `  returnFrameConfidences: ${returnFrameConf},`,
+    `  returnFrameIndices: ${frameIdx},`,
+    `  returnLogProbs: ${logProbs},`,
+    `  returnTdtSteps: ${tdtSteps},`,
+    `  timeOffset: ${Number(offset) || 0},`,
+    '}',
+  ].join('\n'), [rt, returnWords, returnTokens, metrics, returnFrameConf, frameIdx, logProbs, tdtSteps, offset]);
+
+  const currentOptionsSnippet = direct ? directOptionsSnippet : pipelineOptionsSnippet;
+
+  const currentExampleSnippet = useMemo(() => {
+    const modelIdLiteral = JSON.stringify(modelId);
+    const loadOptionsBlock = `const loadOptions = ${loadOptionsSnippet};`;
+    const loadSnippet = mode === 'explicit'
+      ? [
+        "import { AutoProcessor, AutoTokenizer, NemoConformerForTDT, AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';",
+        '',
+        `const modelId = ${modelIdLiteral};`,
+        'const audio = /* Float32Array, URL, Blob, or File */;',
+        '',
+        loadOptionsBlock,
+        '',
+        'const [processor, tokenizer, model] = await Promise.all([',
+        '  AutoProcessor.from_pretrained(modelId),',
+        '  AutoTokenizer.from_pretrained(modelId),',
+        '  NemoConformerForTDT.from_pretrained(modelId, loadOptions),',
+        ']);',
+        '',
+        'const transcriber = new AutomaticSpeechRecognitionPipeline({',
+        "  task: 'automatic-speech-recognition',",
+        '  model,',
+        '  processor,',
+        '  tokenizer,',
+        '});',
+      ].join('\n')
+      : [
+        "import { pipeline } from '@huggingface/transformers';",
+        '',
+        `const modelId = ${modelIdLiteral};`,
+        'const audio = /* Float32Array, URL, Blob, or File */;',
+        '',
+        loadOptionsBlock,
+        '',
+        "const transcriber = await pipeline('automatic-speech-recognition', modelId, loadOptions);",
+      ].join('\n');
+
+    const inferenceSnippet = direct
+      ? [
+        'const inputs = await transcriber.processor(audio);',
+        'const output = await transcriber.model.transcribe(',
+        '  inputs,',
+        indentCode(directOptionsSnippet, 2),
+        ');',
+      ].join('\n')
+      : [
+        'const output = await transcriber(',
+        '  audio,',
+        indentCode(pipelineOptionsSnippet, 2),
+        ');',
+      ].join('\n');
+
+    return `${loadSnippet}\n\n${inferenceSnippet}`;
+  }, [modelId, loadOptionsSnippet, mode, direct, directOptionsSnippet, pipelineOptionsSnippet]);
 
   const benchmarkSummary = useMemo(
     () => summarizeBenchmarkRuns(benchmarkRuns, benchmarkBucketSize, benchmarkOverlapSec),
@@ -1709,7 +1928,7 @@ export default function App() {
   }
 
   async function load() {
-    setLoading(true); setError(''); setStatus('Loading...'); setResult(null); setDownloadProgress(null);
+    setLoading(true); setError(''); setStatus('Loading...'); setResult(null); setLastRunMetrics(null); setDownloadProgress(null);
     await checkCached(modelId);
     try {
       await ensureLocalOrtWasmBlobs();
@@ -1778,7 +1997,7 @@ export default function App() {
       setStatus('Verifying...');
       const expectedPrefix = 'The boy was there when the sun rose.';
       try {
-        const pcm = await decodeAudio(SAMPLE, 16000);
+        const { audio: pcm } = await prepareAudioInput(SAMPLE, 16000, audioPrepBackend, audioPrepQuality);
         const useDirect = t?.model?.config?.model_type === 'nemo-conformer-tdt';
         let warmupText = '';
         if (useDirect) {
@@ -1818,65 +2037,118 @@ export default function App() {
 
     const t = tRef.current;
     const sampleRate = t.processor?.feature_extractor?.config?.sampling_rate ?? 16000;
-    const decodeStart = performance.now();
-    const mono = input instanceof Float32Array ? input : await decodeAudio(input, sampleRate);
-    const audioDecodeMs = performance.now() - decodeStart;
+    const endToEndStart = performance.now();
+    const { audio: mono, profile: audioPrepProfile } = await prepareAudioInput(
+      input,
+      sampleRate,
+      audioPrepBackend,
+      audioPrepQuality,
+    );
+    const audioPrepMs = audioPrepProfile?.totalMs ?? 0;
     const durationSec = Number.isFinite(expectedDurationSec) && expectedDurationSec > 0
       ? expectedDurationSec
       : mono.length / sampleRate;
     const useDirect = direct && mType === 'nemo-conformer-tdt';
     let inputEstimate = null;
+    let processorMs = null;
+    let callMs = null;
 
-    const inferenceStart = performance.now();
     let out;
     if (useDirect) {
+      const processorStart = performance.now();
       const inputs = await t.processor(mono);
+      processorMs = performance.now() - processorStart;
       inputEstimate = estimateInputPayloadMetrics({
         mono,
         sampleRate,
         inputs,
         encoderDtype: encDtype,
       });
+      const callStart = performance.now();
       out = await t.model.transcribe(inputs, {
         tokenizer: t.tokenizer,
-        return_timestamps: rt,
-        return_words: returnWords,
-        return_tokens: returnTokens,
-        return_metrics: forceMetrics ? true : metrics,
+        returnTimestamps: rt,
+        returnWords: returnWords,
+        returnTokens: returnTokens,
+        returnMetrics: forceMetrics ? true : metrics,
         returnFrameConfidences: returnFrameConf,
         returnFrameIndices: frameIdx,
         returnLogProbs: logProbs,
         returnTdtSteps: tdtSteps,
         timeOffset: Number(offset) || 0,
       });
+      callMs = performance.now() - callStart;
     } else {
-      const p = pipelineTimestampMode === 'segments'
-        ? { return_timestamps: true }
-        : pipelineTimestampMode === 'words'
-          ? { return_timestamps: 'word' }
-          : {};
+      const p = { ...pipelineCallOptions };
+      const callStart = performance.now();
       out = await t(mono, p);
+      callMs = performance.now() - callStart;
     }
+    const inferenceWallMs = (processorMs ?? 0) + (callMs ?? 0);
+    const endToEndMs = performance.now() - endToEndStart;
+    const inferenceRtf = durationSec > 0 ? inferenceWallMs / 1000 / durationSec : null;
+    const endToEndRtf = durationSec > 0 ? endToEndMs / 1000 / durationSec : null;
 
     return {
       out,
       useDirect,
       durationSec,
-      audioDecodeMs,
+      audioPrepMs,
+      audioPrepBackend: audioPrepProfile?.backend ?? audioPrepBackend,
+      audioPrepStrategy: audioPrepProfile?.strategy ?? null,
+      audioDecodeMs: audioPrepProfile?.decodeMs ?? null,
+      audioDownmixMs: audioPrepProfile?.downmixMs ?? null,
+      audioResampleMs: audioPrepProfile?.resampleMs ?? null,
+      audioResampler: audioPrepProfile?.resampler ?? null,
+      audioResamplerQuality: audioPrepProfile?.resamplerQuality ?? null,
+      audioInputSampleRate: audioPrepProfile?.inputSampleRate ?? null,
+      audioOutputSampleRate: audioPrepProfile?.outputSampleRate ?? sampleRate,
+      processorMs,
+      callMs,
+      inferenceWallMs,
+      endToEndMs,
+      inferenceRtf,
+      inferenceRtfx: inferenceRtf && Number.isFinite(inferenceRtf) && inferenceRtf > 0 ? 1 / inferenceRtf : null,
+      endToEndRtf,
+      endToEndRtfx: endToEndRtf && Number.isFinite(endToEndRtf) && endToEndRtf > 0 ? 1 / endToEndRtf : null,
       inputEstimate,
-      wallMs: performance.now() - inferenceStart,
+      wallMs: inferenceWallMs,
     };
   }
 
   async function transcribeInput(input, name) {
     if (!tRef.current) return;
-    setRunning(true); setError(''); setStatus(`Transcribing ${name}...`);
+    setRunning(true); setError(''); setStatus(`Transcribing ${name}...`); setLastRunMetrics(null);
     try {
-      const { out, useDirect } = await inferInput(input, { forceMetrics: metrics });
+      const measured = await inferInput(input, { forceMetrics: metrics });
+      const { out, useDirect } = measured;
       setResult(out);
+      setLastRunMetrics({
+        mode: useDirect ? 'direct' : 'pipeline',
+        durationSec: measured.durationSec,
+        audioPrepMs: measured.audioPrepMs,
+        audioPrepBackend: measured.audioPrepBackend,
+        audioPrepStrategy: measured.audioPrepStrategy,
+        audioDecodeMs: measured.audioDecodeMs,
+        audioDownmixMs: measured.audioDownmixMs,
+        audioResampleMs: measured.audioResampleMs,
+        audioResampler: measured.audioResampler,
+        audioResamplerQuality: measured.audioResamplerQuality,
+        audioInputSampleRate: measured.audioInputSampleRate,
+        audioOutputSampleRate: measured.audioOutputSampleRate,
+        processorMs: measured.processorMs,
+        callMs: measured.callMs,
+        inferenceWallMs: measured.inferenceWallMs,
+        endToEndMs: measured.endToEndMs,
+        inferenceRtf: measured.inferenceRtf,
+        inferenceRtfx: measured.inferenceRtfx,
+        endToEndRtf: measured.endToEndRtf,
+        endToEndRtfx: measured.endToEndRtfx,
+      });
       setHistory((h) => [{ id: `${Date.now()}`, name, mode: useDirect ? 'direct' : 'pipeline', text: textOf(out) }, ...h].slice(0, 25));
       setStatus('Done');
     } catch (e) {
+      setLastRunMetrics(null);
       setError(e?.message || String(e));
       setStatus('Failed');
     } finally { setRunning(false); }
@@ -1886,8 +2158,7 @@ export default function App() {
     const f = e.target.files?.[0];
     if (!f) return;
     setSelectedFileName(f.name);
-    const u = URL.createObjectURL(f);
-    transcribeInput(u, f.name).finally(() => URL.revokeObjectURL(u));
+    transcribeInput(f, f.name);
   }
 
   async function indexBenchmarkEntries(entries, sourceLabel = 'selection') {
@@ -2137,14 +2408,36 @@ export default function App() {
               );
             }
 
-            const { out, useDirect, durationSec, audioDecodeMs, inputEstimate, wallMs } = await inferInput(file, {
+            const {
+              out,
+              useDirect,
+              durationSec,
+              audioPrepMs,
+              audioPrepBackend,
+              audioPrepStrategy,
+              audioDecodeMs,
+              audioDownmixMs,
+              audioResampleMs,
+              audioResampler,
+              audioResamplerQuality,
+              audioInputSampleRate,
+              audioOutputSampleRate,
+              processorMs,
+              callMs,
+              inferenceWallMs,
+              endToEndMs,
+              inferenceRtfx,
+              endToEndRtfx,
+              inputEstimate,
+              wallMs,
+            } = await inferInput(file, {
               forceMetrics: true,
               expectedDurationSec: sample.durationSec,
             });
             const metricsOut = out?.metrics ?? null;
             const modelRtf = metricsOut?.rtf ?? (
-              Number.isFinite(metricsOut?.total_ms) && durationSec > 0
-                ? metricsOut.total_ms / 1000 / durationSec
+              Number.isFinite(metricsOut?.totalMs) && durationSec > 0
+                ? metricsOut.totalMs / 1000 / durationSec
                 : null
             );
             const wallRtf = durationSec > 0 ? wallMs / 1000 / durationSec : null;
@@ -2152,13 +2445,28 @@ export default function App() {
             measurements.push({
               durationSec,
               audioDecodeMs,
+              audioPrepMs,
+              audioPrepBackend,
+              audioPrepStrategy,
+              audioDownmixMs,
+              audioResampleMs,
+              audioResampler,
+              audioResamplerQuality,
+              audioInputSampleRate,
+              audioOutputSampleRate,
+              processorMs,
+              callMs,
               wallMs,
+              inferenceWallMs,
+              endToEndMs,
               wallRtfx: wallRtf && Number.isFinite(wallRtf) && wallRtf > 0 ? 1 / wallRtf : null,
-              modelTotalMs: metricsOut?.total_ms ?? null,
-              modelRtfx: metricsOut?.rtf_x ?? (modelRtf && Number.isFinite(modelRtf) && modelRtf > 0 ? 1 / modelRtf : null),
-              encodeMs: metricsOut?.encode_ms ?? null,
-              decodeMs: metricsOut?.decode_ms ?? null,
-              tokenizeMs: metricsOut?.tokenize_ms ?? null,
+              inferenceRtfx,
+              endToEndRtfx,
+              modelTotalMs: metricsOut?.totalMs ?? null,
+              modelRtfx: metricsOut?.rtfX ?? (modelRtf && Number.isFinite(modelRtf) && modelRtf > 0 ? 1 / modelRtf : null),
+              encodeMs: metricsOut?.encodeMs ?? null,
+              decodeMs: metricsOut?.decodeMs ?? null,
+              tokenizeMs: metricsOut?.tokenizeMs ?? null,
               inputEstimate,
             });
             lastOut = out;
@@ -2190,9 +2498,24 @@ export default function App() {
             wordCount: Array.isArray(lastOut?.words) ? lastOut.words.length : null,
             tokenCount: Array.isArray(lastOut?.tokens) ? lastOut.tokens.length : null,
             audioDecodeMs: averageOf(measurements.map((entry) => entry.audioDecodeMs)),
+            audioPrepMs: averageOf(measurements.map((entry) => entry.audioPrepMs)),
+            audioPrepBackend: measurements[0]?.audioPrepBackend ?? null,
+            audioPrepStrategy: measurements[0]?.audioPrepStrategy ?? null,
+            audioDownmixMs: averageOf(measurements.map((entry) => entry.audioDownmixMs)),
+            audioResampleMs: averageOf(measurements.map((entry) => entry.audioResampleMs)),
+            audioResampler: measurements[0]?.audioResampler ?? null,
+            audioResamplerQuality: measurements[0]?.audioResamplerQuality ?? null,
+            audioInputSampleRate: measurements[0]?.audioInputSampleRate ?? null,
+            audioOutputSampleRate: measurements[0]?.audioOutputSampleRate ?? null,
+            processorMs: averageOf(measurements.map((entry) => entry.processorMs)),
+            callMs: averageOf(measurements.map((entry) => entry.callMs)),
             wallMs: averageOf(measurements.map((entry) => entry.wallMs)),
+            inferenceWallMs: averageOf(measurements.map((entry) => entry.inferenceWallMs)),
+            endToEndMs: averageOf(measurements.map((entry) => entry.endToEndMs)),
             wallRtfx: averageOf(measurements.map((entry) => entry.wallRtfx)),
             wallRtfxStddev: stddevOf(measurements.map((entry) => entry.wallRtfx)),
+            inferenceRtfx: averageOf(measurements.map((entry) => entry.inferenceRtfx)),
+            endToEndRtfx: averageOf(measurements.map((entry) => entry.endToEndRtfx)),
             modelTotalMs: averageOf(measurements.map((entry) => entry.modelTotalMs)),
             modelRtfx: averageOf(measurements.map((entry) => entry.modelRtfx)),
             modelRtfxStddev: stddevOf(measurements.map((entry) => entry.modelRtfx)),
@@ -2229,8 +2552,15 @@ export default function App() {
             wordCount: null,
             tokenCount: null,
             audioDecodeMs: null,
+            audioPrepMs: null,
+            processorMs: null,
+            callMs: null,
             wallMs: null,
+            inferenceWallMs: null,
+            endToEndMs: null,
             wallRtfx: null,
+            inferenceRtfx: null,
+            endToEndRtfx: null,
             modelTotalMs: null,
             modelRtfx: null,
             encodeMs: null,
@@ -2430,6 +2760,20 @@ export default function App() {
           </div>
         </header>
 
+        {usingNpmTransformers && (
+          <div className="mb-4 rounded-xl border border-amber-300/70 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+            <div className="font-semibold mb-1">Running npm package build</div>
+            <p className="leading-relaxed">
+              This app is currently using <code className="font-mono">@huggingface/transformers</code> from
+              <code className="font-mono"> node_modules</code>, not your local
+              <code className="font-mono"> ../transformers.js</code> checkout. If you are validating local NeMo pipeline
+              fixes, run <code className="font-mono">npm run dev:local</code> or
+              <code className="font-mono"> npm run build:local</code> after rebuilding
+              <code className="font-mono"> ../transformers.js/packages/transformers</code>.
+            </p>
+          </div>
+        )}
+
         <div className={`grid grid-cols-1 gap-4 items-start ${activeView === 'benchmark' ? 'xl:grid-cols-12' : 'lg:grid-cols-3'}`}>
           {/* Left Column - Model + Options */}
           <div className={`${activeView === 'benchmark' ? 'xl:col-span-12 grid gap-3 xl:grid-cols-2 2xl:grid-cols-4' : 'lg:col-span-1 flex flex-col'} gap-3`}>
@@ -2443,6 +2787,10 @@ export default function App() {
                   <option value="pipeline">pipeline (auto)</option>
                   <option value="explicit">explicit (local export)</option>
                 </SelectField>
+                <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 -mt-2">
+                  Load mode changes how the transcriber is constructed. It does not decide whether the demo uses
+                  pipeline inference or direct <code className="font-mono">model.transcribe()</code>.
+                </p>
 
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
@@ -2495,7 +2843,7 @@ export default function App() {
                     {modelLoaded ? 'Model Loaded' : loading ? 'Loading...' : 'Load Model'}
                   </button>
                   <button
-                    onClick={() => { tRef.current = null; setResult(null); setMType('not-loaded'); setModelLoaded(false); setStatus('Idle'); setIsCached(null); }}
+                    onClick={() => { tRef.current = null; setResult(null); setLastRunMetrics(null); setMType('not-loaded'); setModelLoaded(false); setStatus('Idle'); setIsCached(null); }}
                     disabled={busy}
                     className="bg-primary-muted hover:bg-primary dark:bg-border-dark dark:hover:bg-accent-muted text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -2514,9 +2862,48 @@ export default function App() {
               </h2>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Direct Nemo call</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Use direct model.transcribe()</span>
                   <Toggle id="direct" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
                 </div>
+                <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  {direct
+                    ? 'Direct mode exposes rich NeMo fields like words, tokens, confidence, metrics, and debug traces.'
+                    : 'Pipeline mode stays HF-compatible: text only, sentence-like timestamp chunks, or word chunks.'}
+                </p>
+
+                <SelectField
+                  label="Audio prep"
+                  value={audioPrepBackend}
+                  onChange={(e) => setAudioPrepBackend(e.target.value)}
+                >
+                  <option value="custom-js">custom JS audio prep</option>
+                  <option value="transformers">transformers.js</option>
+                  <option value="demo">demo AudioContext</option>
+                </SelectField>
+                <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  {audioPrepBackend === 'custom-js'
+                    ? 'Default path. WAV files bypass browser decode, other formats use browser codecs plus one explicit final resample to 16 kHz, and decode/downmix/resample time is profiled separately.'
+                    : audioPrepBackend === 'transformers'
+                      ? 'Uses transformers.js read_audio(), which stays on the browser decode/resample path.'
+                      : 'Legacy demo path. Uses AudioContext at target sample rate plus simple browser downmix.'}
+                </p>
+                {audioPrepBackend === 'custom-js' && (
+                  <>
+                    <SelectField
+                      label="Custom resampler"
+                      value={audioPrepQuality}
+                      onChange={(e) => setAudioPrepQuality(e.target.value)}
+                    >
+                      {CUSTOM_RESAMPLER_QUALITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </SelectField>
+                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                      <code className="font-mono">linear parity</code> matches the current Python and Node parity scripts.
+                      The sinc modes use <code className="font-mono">libsamplerate-js</code>. Linear avoids that extra WASM SRC overhead and is now the default custom mode.
+                    </p>
+                  </>
+                )}
 
                 {direct ? (
                   <div className="flex items-center justify-between">
@@ -2529,10 +2916,48 @@ export default function App() {
                     value={pipelineTimestampMode}
                     onChange={(e) => setPipelineTimestampMode(e.target.value)}
                   >
-                    <option value="none">off</option>
-                    <option value="segments">segments</option>
-                    <option value="words">words</option>
+                    <option value="none">off ({'{ text }'})</option>
+                    <option value="segments">sentences ({'{ text, chunks }'})</option>
+                    <option value="words">words ({'{ text, chunks }'})</option>
                   </SelectField>
+                )}
+                {!direct && (
+                  <>
+                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                      <code className="font-mono">return_timestamps: true</code> now returns sentence-like finalized chunks
+                      instead of arbitrary Whisper-style splits.
+                    </p>
+                    <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/70 px-4 py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Window size override</div>
+                          <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-1">
+                            Override NeMo long-audio <code className="font-mono">chunk_length_s</code> to compare
+                            window size versus measured RTFx. The sentence-based path ignores
+                            <code className="font-mono"> stride_length_s</code>.
+                          </p>
+                        </div>
+                        <Toggle
+                          id="pipelineWindowOverrideEnabled"
+                          checked={pipelineWindowOverrideEnabled}
+                          onChange={(e) => setPipelineWindowOverrideEnabled(e.target.checked)}
+                        />
+                      </div>
+                      {pipelineWindowOverrideEnabled && (
+                        <div className="mt-3">
+                          <SliderField
+                            label="chunk_length_s"
+                            value={pipelineWindowOverrideSec}
+                            min={NEMO_PIPELINE_WINDOW_MIN_S}
+                            max={NEMO_PIPELINE_WINDOW_MAX_S}
+                            step={5}
+                            onChange={(next) => setPipelineWindowOverrideSec(clampPipelineWindowSec(next))}
+                            formatValue={(next) => `${next.toFixed(0)}s`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 <div className="border-t border-border-light dark:border-border-dark pt-2 mt-1">
@@ -2689,6 +3114,97 @@ export default function App() {
                       Selected: <span className="font-medium text-gray-700 dark:text-gray-200">{selectedFileName}</span>
                     </p>
                   )}
+                </div>
+
+                <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-4">
+                    <div>
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                        API Contract
+                      </h2>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+                        The demo now mirrors the updated NeMo TDT split: pipeline mode stays task-compatible,
+                        while direct mode exposes the full model output.
+                      </p>
+                    </div>
+                    <div className="inline-flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2.5 py-1 rounded-full border border-border-light dark:border-border-dark bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                        load: {mode === 'explicit' ? 'explicit local export' : 'pipeline() auto'}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-full border border-border-light dark:border-border-dark bg-primary/10 dark:bg-accent-muted/20 text-primary dark:text-accent-muted">
+                        inference: {direct ? 'direct transcribe()' : 'pipeline()'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4">
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                          Current Output
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+                          {currentContractSummary.title}
+                        </div>
+                        <div className="font-mono text-xs text-gray-700 dark:text-gray-300 mb-2">
+                          {currentContractSummary.shape}
+                        </div>
+                        <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                          {currentContractSummary.detail}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                          Long Audio Merge
+                        </div>
+                        <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                          Long files are decoded in sentence windows, finalized sentences keep their timestamps,
+                          the last immature sentence is retried, and the next window restarts from the end of the
+                          latest finalized sentence.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                          Current Options
+                        </div>
+                        <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words">
+                          {currentOptionsSnippet}
+                        </pre>
+                        <button
+                          onClick={() => copyToClipboard(currentOptionsSnippet)}
+                          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-muted hover:text-primary dark:text-accent-muted dark:hover:text-primary-muted bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-border-light dark:border-border-dark transition-colors"
+                        >
+                          <span className="material-icons-outlined text-xs">content_copy</span>
+                          Copy options
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                          <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-1">
+                            Copyable Example
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Uses the exact load mode and inference toggles selected in the UI.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(currentExampleSnippet)}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-primary-muted hover:text-primary dark:text-accent-muted dark:hover:text-primary-muted bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-border-light dark:border-border-dark transition-colors"
+                        >
+                          <span className="material-icons-outlined text-xs">content_copy</span>
+                          Copy JS
+                        </button>
+                      </div>
+                      <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words max-h-[420px] overflow-auto">
+                        {currentExampleSnippet}
+                      </pre>
+                    </div>
+                  </div>
                 </div>
 
                 <PerformanceMetrics stats={stats} />

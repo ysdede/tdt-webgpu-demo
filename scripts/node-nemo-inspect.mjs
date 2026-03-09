@@ -135,6 +135,7 @@ function parseArgs() {
     returnLogProbs: false,
     returnTdtSteps: false,
     timeOffset: 0,
+    output: null,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -157,6 +158,7 @@ function parseArgs() {
     else if (a === '--return-log-probs') out.returnLogProbs = true;
     else if (a === '--return-tdt-steps') out.returnTdtSteps = true;
     else if (a === '--time-offset') out.timeOffset = toFiniteNumber(args[++i], '--time-offset');
+    else if (a === '--output') out.output = path.resolve(process.cwd(), args[++i]);
     else if (a === '--local') out.local = true;
     else if (a === '--npm') out.local = false;
     else if (a === '--local-module') out.localModule = path.resolve(process.cwd(), args[++i]);
@@ -193,10 +195,10 @@ function makePipelineOptions(opts) {
 function makeDirectOptions(tokenizer, opts) {
   return {
     tokenizer,
-    return_timestamps: opts.timestamps !== 'none',
-    return_words: opts.returnWords || opts.timestamps === 'words',
-    return_tokens: opts.returnTokens,
-    return_metrics: opts.returnMetrics,
+    returnTimestamps: opts.timestamps !== 'none',
+    returnWords: opts.returnWords || opts.timestamps === 'words',
+    returnTokens: opts.returnTokens,
+    returnMetrics: opts.returnMetrics,
     returnFrameConfidences: opts.returnFrameConfidences,
     returnFrameIndices: opts.returnFrameIndices,
     returnLogProbs: opts.returnLogProbs,
@@ -275,7 +277,7 @@ async function main() {
   }
   const elapsedS = Number(((Date.now() - started) / 1000).toFixed(2));
 
-  console.log(JSON.stringify({
+  const payload = {
     model: opts.model,
     api: opts.api,
     audio: {
@@ -294,7 +296,15 @@ async function main() {
     options: effectiveOptions,
     elapsed_s: elapsedS,
     output,
-  }, null, 2));
+  };
+
+  const encoded = JSON.stringify(payload, null, 2);
+  if (opts.output) {
+    fs.mkdirSync(path.dirname(opts.output), { recursive: true });
+    fs.writeFileSync(opts.output, encoded, 'utf8');
+  } else {
+    console.log(encoded);
+  }
 
   await transcriber.dispose?.();
 }

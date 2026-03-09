@@ -118,9 +118,17 @@ function joinChunkTexts(chunks) {
 function toWordListFromChunks(chunks) {
   return (chunks ?? []).map((chunk) => ({
     text: chunk?.text ?? '',
-    start_time: chunk?.timestamp?.[0] ?? null,
-    end_time: chunk?.timestamp?.[1] ?? null,
+    startTime: chunk?.timestamp?.[0] ?? null,
+    endTime: chunk?.timestamp?.[1] ?? null,
   }));
+}
+
+function getWordStart(word) {
+  return word?.startTime ?? word?.start_time ?? null;
+}
+
+function getWordEnd(word) {
+  return word?.endTime ?? word?.end_time ?? null;
 }
 
 function compareWordTimings(referenceWords, actualWords) {
@@ -133,8 +141,8 @@ function compareWordTimings(referenceWords, actualWords) {
   for (let i = 0; i < length; i++) {
     const ref = referenceWords[i];
     const act = actualWords[i];
-    const startDiff = Math.abs((act.start_time ?? 0) - (ref.start_time ?? 0));
-    const endDiff = Math.abs((act.end_time ?? 0) - (ref.end_time ?? 0));
+    const startDiff = Math.abs((getWordStart(act) ?? 0) - (getWordStart(ref) ?? 0));
+    const endDiff = Math.abs((getWordEnd(act) ?? 0) - (getWordEnd(ref) ?? 0));
     maxStartDiff = Math.max(maxStartDiff, startDiff);
     maxEndDiff = Math.max(maxEndDiff, endDiff);
     if (startDiff > 0.04 || endDiff > 0.04) over40ms += 1;
@@ -320,7 +328,7 @@ async function main() {
       fixture: opts.fixture,
       text_length: referenceText.length,
       word_count: referenceWords.length,
-      utterance_timestamp: reference.output?.utterance_timestamp ?? null,
+      utteranceTimestamp: reference.output?.utteranceTimestamp ?? reference.output?.utterance_timestamp ?? null,
     },
     runs: results,
   }, null, 2));
