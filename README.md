@@ -13,8 +13,10 @@ This project is a React + Vite web app for automatic speech recognition with Nem
 
 - Run Parakeet-style TDT ASR models in the browser, for example `ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4`.
 - Choose encoder backend and dtype settings (WebGPU or WASM).
+- Switch between HF pipeline mode and direct `model.transcribe()` mode with mode-specific controls.
+- Compare browser audio prep paths, including a deterministic custom JS path with linear parity resampling and optional higher-quality SRC modes.
 - Transcribe sample or uploaded audio.
-- Inspect transcript, timestamps, confidence data, and raw JSON output.
+- Inspect transcript, timestamps, confidence data, raw JSON output, and separated run/audio/model metrics.
 - Run a Node.js CLI test script for quick non-UI checks.
 
 ## Requirements
@@ -86,13 +88,14 @@ Repository settings:
 
 - Enable Pages and select `GitHub Actions` as the source.
 - Optional repository variable `TRANSFORMERS_REPO` (default `ysdede/transformers.js`).
-- Optional repository variable `TRANSFORMERS_REPO_REF` (default `v4-nemo-conformer-tdt-main`).
+- Optional repository variable `TRANSFORMERS_REPO_REF` (default `v4-nemo-conformer-tdt-main-r3`).
 - Optional secret `TRANSFORMERS_REPO_TOKEN` if `transformers.js` is private.
 
 Notes:
 
 - GitHub Actions can only build commits that are pushed to GitHub.
 - `workflow_dispatch` supports a `transformers_ref` input for one-off branch/tag/SHA overrides.
+- The checked-in workflow defaults to your fork branch `v4-nemo-conformer-tdt-main-r3`.
 - The Vite base path is set automatically for both project pages and user pages.
 
 ## Hugging Face Spaces Sync
@@ -144,8 +147,9 @@ Sample audio file used by the UI: `public/assets/Harvard-L2-1.ogg`.
 ## UI Notes
 
 - Model configuration supports load mode, model ID, device, dtype, and WASM thread tuning.
-- Transcription options include direct Nemo API mode and detailed output flags.
-- UI includes transcript view, raw JSON output, metrics, and local history.
+- Transcription options include explicit inference mode selection, direct Nemo API flags, pipeline timestamp settings, and audio prep controls.
+- Metrics are split by mode: pipeline shows wall-clock run timing plus audio prep, while direct mode shows audio prep plus direct model internals.
+- The transcribe workspace is organized into three columns with transcript and API contract visible at the same time.
 - Settings and theme preferences are persisted in `localStorage`.
 
 ## License

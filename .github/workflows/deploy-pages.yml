@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TRANSFORMERS_REPO: ${{ vars.TRANSFORMERS_REPO || 'ysdede/transformers.js' }}
-      TRANSFORMERS_REPO_REF: ${{ github.event.inputs.transformers_ref || vars.TRANSFORMERS_REPO_REF || 'v4-nemo-conformer-tdt-main' }}
+      TRANSFORMERS_REPO_REF: ${{ github.event.inputs.transformers_ref || vars.TRANSFORMERS_REPO_REF || 'v4-nemo-conformer-tdt-main-r3' }}
     steps:
       - name: Checkout demo
         uses: actions/checkout@v4

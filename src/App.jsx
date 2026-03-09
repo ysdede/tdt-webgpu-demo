@@ -591,16 +591,21 @@ function SelectField({ label, value, onChange, disabled, children }) {
   );
 }
 
-function MetricRow({ items }) {
+function MetricGrid({ items }) {
+  const visibleItems = items.filter(({ value }) => value != null);
+  if (visibleItems.length === 0) return null;
+
   return (
-    <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-      {items.map(({ label, value }) => (
-        <span key={label} className="flex items-baseline gap-2 min-w-0">
-          <span className="text-primary-muted dark:text-accent-muted font-medium shrink-0">{label}</span>
-          <span className="font-mono text-gray-900 dark:text-white tabular-nums truncate">
-            {value != null ? value : '-'}
+    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-[12px] leading-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {visibleItems.map(({ label, value }) => (
+        <div key={label} className="flex min-w-0 items-baseline justify-between gap-3">
+          <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-primary-muted dark:text-accent-muted">
+            {label}
           </span>
-        </span>
+          <span className="shrink-0 whitespace-nowrap text-right font-mono tabular-nums text-gray-900 dark:text-white">
+            {value}
+          </span>
+        </div>
       ))}
     </div>
   );
@@ -608,42 +613,87 @@ function MetricRow({ items }) {
 
 function PerformanceMetrics({ stats }) {
   const fmt = (v, unit) => (v != null && Number.isFinite(v) ? `${v.toFixed(1)}${unit}` : '-');
-  const primaryItems = [
-    { label: 'Mode', value: stats.mode || '-' },
+  const isDirectMode = stats.mode === 'direct';
+  const hasModelInternals = [
+    stats.preprocessMs,
+    stats.encodeMs,
+    stats.decodeMs,
+    stats.tokenizeMs,
+    stats.totalMs,
+    stats.rtfx,
+  ].some((value) => value != null && Number.isFinite(value));
+
+  const overviewItems = [
     { label: 'Audio', value: stats.audioDurationSec != null ? formatCompactDuration(stats.audioDurationSec) : '-' },
-    { label: 'Audio prep', value: fmt(stats.audioPrepMs, 'ms') },
-    { label: 'Prep mode', value: stats.audioPrepBackend || '-' },
     { label: 'Processor', value: fmt(stats.processorMs, 'ms') },
-    { label: 'Call', value: fmt(stats.callMs, 'ms') },
     { label: 'Infer wall', value: fmt(stats.inferenceWallMs, 'ms') },
     { label: 'End-to-end', value: fmt(stats.endToEndMs, 'ms') },
     { label: 'Infer RTFx', value: stats.inferenceRtfx != null && Number.isFinite(stats.inferenceRtfx) ? `${stats.inferenceRtfx.toFixed(1)}x` : null },
     { label: 'End-to-end RTFx', value: stats.endToEndRtfx != null && Number.isFinite(stats.endToEndRtfx) ? `${stats.endToEndRtfx.toFixed(1)}x` : null },
   ];
-  const secondaryItems = [
-    { label: 'Input rate', value: stats.audioInputSampleRate != null ? `${stats.audioInputSampleRate} Hz` : '-' },
-    { label: 'Output rate', value: stats.audioOutputSampleRate != null ? `${stats.audioOutputSampleRate} Hz` : '-' },
-    { label: 'Prep path', value: stats.audioPrepStrategy || '-' },
+  const audioItems = [
+    { label: 'Total', value: fmt(stats.audioPrepMs, 'ms') },
+    { label: 'Input', value: stats.audioInputSampleRate != null ? `${stats.audioInputSampleRate} Hz` : null },
+    { label: 'Output', value: stats.audioOutputSampleRate != null ? `${stats.audioOutputSampleRate} Hz` : null },
     { label: 'Decode', value: fmt(stats.audioDecodeMs, 'ms') },
     { label: 'Downmix', value: fmt(stats.audioDownmixMs, 'ms') },
     { label: 'Resample', value: fmt(stats.audioResampleMs, 'ms') },
-    { label: 'Resampler', value: stats.audioResampler || '-' },
-    { label: 'SRC quality', value: stats.audioResamplerQuality || '-' },
+    { label: 'Backend', value: stats.audioPrepBackend || null },
+    { label: 'Resampler', value: stats.audioResampler || null },
+    { label: 'Quality', value: stats.audioResamplerQuality || null },
+  ];
+  const modelItems = [
     { label: 'Preprocess', value: fmt(stats.preprocessMs, 'ms') },
     { label: 'Encode', value: fmt(stats.encodeMs, 'ms') },
-    { label: 'Model decode', value: fmt(stats.decodeMs, 'ms') },
+    { label: 'Decode', value: fmt(stats.decodeMs, 'ms') },
     { label: 'Tokenize', value: fmt(stats.tokenizeMs, 'ms') },
-    { label: 'Model total', value: fmt(stats.totalMs, 'ms') },
-    { label: 'Model RTFx', value: stats.rtfx != null && Number.isFinite(stats.rtfx) ? `${stats.rtfx.toFixed(1)}x` : null },
+    { label: 'Total', value: fmt(stats.totalMs, 'ms') },
+    { label: 'RTFx', value: stats.rtfx != null && Number.isFinite(stats.rtfx) ? `${stats.rtfx.toFixed(1)}x` : null },
     { label: 'Window', value: stats.pipelineWindowSec != null ? `${stats.pipelineWindowSec.toFixed(0)}s` : null },
   ];
   return (
-    <div className="bg-card-light dark:bg-card-dark rounded-xl border border-border-light dark:border-border-dark px-4 py-3">
-      <MetricRow items={primaryItems} />
-      <div className="mt-2 pt-2 border-t border-border-light dark:border-border-dark">
-        <MetricRow items={secondaryItems} />
+    <div className="rounded-xl border border-border-light bg-card-light px-4 py-3 dark:border-border-dark dark:bg-card-dark">
+      <div className="space-y-2.5">
+        {!isDirectMode && (
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+              Run Timing
+            </div>
+            <MetricGrid items={overviewItems} />
+          </div>
+        )}
+        <div className="border-t border-border-light pt-2 dark:border-border-dark">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+            Audio Prep
+          </div>
+          <MetricGrid items={audioItems} />
+        </div>
+        {isDirectMode && hasModelInternals ? (
+          <div className="border-t border-border-light pt-2 dark:border-border-dark">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+              Direct Model Internals
+            </div>
+            <MetricGrid items={modelItems} />
+          </div>
+        ) : !isDirectMode ? null : (
+          <div className="border-t border-border-light pt-2 text-[12px] text-gray-500 dark:border-border-dark dark:text-gray-400">
+            Direct-only model internals appear here when available.
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function InfoHint({ text, className = '' }) {
+  return (
+    <span
+      title={text}
+      className={`inline-flex h-4 w-4 items-center justify-center rounded-full border border-border-light dark:border-border-dark text-[10px] text-gray-500 dark:text-gray-400 cursor-help ${className}`}
+      aria-label={text}
+    >
+      <span className="material-icons-outlined text-[12px] leading-none">info</span>
+    </span>
   );
 }
 
@@ -2717,7 +2767,7 @@ export default function App() {
 
   return (
     <div className="bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-200 font-sans min-h-screen p-4 md:p-6 transition-colors duration-300" style={{ fontSize: '90%' }}>
-      <div className={`${activeView === 'benchmark' ? 'max-w-[1800px]' : 'max-w-7xl'} mx-auto`}>
+      <div className={`${activeView === 'benchmark' ? 'max-w-[1800px]' : 'max-w-[1860px]'} mx-auto`}>
         {/* Tabs at the very top */}
         <div className="mb-3 flex items-center justify-between">
           <div className="inline-flex rounded-xl border border-border-light dark:border-border-dark bg-card-light dark:bg-card-dark p-1">
@@ -2774,23 +2824,29 @@ export default function App() {
           </div>
         )}
 
-        <div className={`grid grid-cols-1 gap-4 items-start ${activeView === 'benchmark' ? 'xl:grid-cols-12' : 'lg:grid-cols-3'}`}>
+        <div className={`grid grid-cols-1 gap-4 items-start ${activeView === 'benchmark' ? 'xl:grid-cols-12' : 'xl:grid-cols-[minmax(280px,0.72fr)_minmax(500px,1.18fr)_minmax(420px,1fr)]'}`}>
           {/* Left Column - Model + Options */}
-          <div className={`${activeView === 'benchmark' ? 'xl:col-span-12 grid gap-3 xl:grid-cols-2 2xl:grid-cols-4' : 'lg:col-span-1 flex flex-col'} gap-3`}>
+          <div className={`${activeView === 'benchmark' ? 'xl:col-span-12 grid gap-3 xl:grid-cols-2 2xl:grid-cols-4' : 'flex flex-col'} gap-3`}>
             {/* Model Configuration Card */}
             <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-4">
               <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-3">
                 Model Configuration
               </h2>
               <div className="space-y-4">
-                <SelectField label="Load Mode" value={mode} onChange={(e) => setMode(e.target.value)} disabled={configDisabled}>
+                <SelectField
+                  label={(
+                    <span className="inline-flex items-center gap-2">
+                      <span>Load Mode</span>
+                      <InfoHint text="Changes how the transcriber is constructed. It does not decide whether the demo uses pipeline inference or direct model.transcribe()." />
+                    </span>
+                  )}
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value)}
+                  disabled={configDisabled}
+                >
                   <option value="pipeline">pipeline (auto)</option>
                   <option value="explicit">explicit (local export)</option>
                 </SelectField>
-                <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 -mt-2">
-                  Load mode changes how the transcriber is constructed. It does not decide whether the demo uses
-                  pipeline inference or direct <code className="font-mono">model.transcribe()</code>.
-                </p>
 
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
@@ -2804,7 +2860,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                   <SelectField label="Enc. Device" value={encDev} onChange={(e) => setEncDev(e.target.value)} disabled={configDisabled}>
                     <option value="webgpu">webgpu</option>
                     <option value="wasm">wasm</option>
@@ -2815,22 +2871,24 @@ export default function App() {
                   <SelectField label="Dec. Dtype" value={decDtype} onChange={(e) => setDecDtype(e.target.value)} disabled={configDisabled}>
                     {DTYPES.map((d) => <option key={d} value={d}>{d}</option>)}
                   </SelectField>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                    WASM Threads (1-{threadingStatus.sab ? maxWasmCores : 1})
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={threadingStatus.sab ? maxWasmCores : 1}
-                    step={1}
-                    value={wasmThreads}
-                    onChange={(e) => setWasmThreads(clampThreadCount(e.target.value, threadingStatus.sab ? maxWasmCores : 1))}
-                    disabled={configDisabled || !threadingStatus.sab}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-border-light dark:border-border-dark rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-muted focus:border-primary-muted dark:focus:ring-accent-muted dark:focus:border-accent-muted dark:text-white"
-                  />
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                      Threads
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={threadingStatus.sab ? maxWasmCores : 1}
+                      step={1}
+                      value={wasmThreads}
+                      onChange={(e) => setWasmThreads(clampThreadCount(e.target.value, threadingStatus.sab ? maxWasmCores : 1))}
+                      disabled={configDisabled || !threadingStatus.sab}
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-border-light dark:border-border-dark rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-muted focus:border-primary-muted dark:focus:ring-accent-muted dark:focus:border-accent-muted dark:text-white"
+                    />
+                    <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      1-{threadingStatus.sab ? maxWasmCores : 1}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-1">
@@ -2861,49 +2919,42 @@ export default function App() {
                 Transcription Options
               </h2>
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Use direct model.transcribe()</span>
-                  <Toggle id="direct" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
-                </div>
-                <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                  {direct
-                    ? 'Direct mode exposes rich NeMo fields like words, tokens, confidence, metrics, and debug traces.'
-                    : 'Pipeline mode stays HF-compatible: text only, sentence-like timestamp chunks, or word chunks.'}
-                </p>
-
-                <SelectField
-                  label="Audio prep"
-                  value={audioPrepBackend}
-                  onChange={(e) => setAudioPrepBackend(e.target.value)}
-                >
-                  <option value="custom-js">custom JS audio prep</option>
-                  <option value="transformers">transformers.js</option>
-                  <option value="demo">demo AudioContext</option>
-                </SelectField>
-                <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                  {audioPrepBackend === 'custom-js'
-                    ? 'Default path. WAV files bypass browser decode, other formats use browser codecs plus one explicit final resample to 16 kHz, and decode/downmix/resample time is profiled separately.'
-                    : audioPrepBackend === 'transformers'
-                      ? 'Uses transformers.js read_audio(), which stays on the browser decode/resample path.'
-                      : 'Legacy demo path. Uses AudioContext at target sample rate plus simple browser downmix.'}
-                </p>
-                {audioPrepBackend === 'custom-js' && (
-                  <>
-                    <SelectField
-                      label="Custom resampler"
-                      value={audioPrepQuality}
-                      onChange={(e) => setAudioPrepQuality(e.target.value)}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Inference mode</span>
+                    <InfoHint
+                      text={direct
+                        ? 'Direct mode calls model.transcribe() and exposes rich NeMo fields like words, tokens, confidence, metrics, and debug traces.'
+                        : 'Pipeline mode uses the HF-compatible ASR pipeline and returns text with optional timestamp chunks.'}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-border-light dark:border-border-dark bg-gray-50 p-1 dark:bg-gray-900/40">
+                    <button
+                      type="button"
+                      onClick={() => setDirect(false)}
+                      aria-pressed={!direct}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        !direct
+                          ? 'bg-primary text-white shadow-sm dark:bg-accent dark:text-gray-950'
+                          : 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
+                      }`}
                     >
-                      {CUSTOM_RESAMPLER_QUALITY_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </SelectField>
-                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                      <code className="font-mono">linear parity</code> matches the current Python and Node parity scripts.
-                      The sinc modes use <code className="font-mono">libsamplerate-js</code>. Linear avoids that extra WASM SRC overhead and is now the default custom mode.
-                    </p>
-                  </>
-                )}
+                      Pipeline
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDirect(true)}
+                      aria-pressed={direct}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        direct
+                          ? 'bg-primary text-white shadow-sm dark:bg-accent dark:text-gray-950'
+                          : 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
+                      }`}
+                    >
+                      Direct model.transcribe()
+                    </button>
+                  </div>
+                </div>
 
                 {direct ? (
                   <div className="flex items-center justify-between">
@@ -2923,19 +2974,13 @@ export default function App() {
                 )}
                 {!direct && (
                   <>
-                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                      <code className="font-mono">return_timestamps: true</code> now returns sentence-like finalized chunks
-                      instead of arbitrary Whisper-style splits.
-                    </p>
                     <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/70 px-4 py-3">
                       <div className="flex items-center justify-between gap-4">
                         <div>
-                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Window size override</div>
-                          <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-1">
-                            Override NeMo long-audio <code className="font-mono">chunk_length_s</code> to compare
-                            window size versus measured RTFx. The sentence-based path ignores
-                            <code className="font-mono"> stride_length_s</code>.
-                          </p>
+                          <div className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <span>Window size override</span>
+                            <InfoHint text="Override NeMo long-audio chunk_length_s to compare window size versus measured RTFx. The sentence-based path ignores stride_length_s." />
+                          </div>
                         </div>
                         <Toggle
                           id="pipelineWindowOverrideEnabled"
@@ -2960,39 +3005,41 @@ export default function App() {
                   </>
                 )}
 
-                <div className="border-t border-border-light dark:border-border-dark pt-2 mt-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">Detail Flags</p>
-                  <div className="grid grid-cols-2 gap-y-1.5 gap-x-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Words</span>
-                      <Toggle id="words" checked={returnWords} onChange={(e) => setReturnWords(e.target.checked)} disabled={!direct || !rt} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Tokens</span>
-                      <Toggle id="tokens" checked={returnTokens} onChange={(e) => setReturnTokens(e.target.checked)} disabled={!direct || !rt} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Metrics</span>
-                      <Toggle id="metrics" checked={metrics} onChange={(e) => setMetrics(e.target.checked)} disabled={!direct} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Frame conf.</span>
-                      <Toggle id="frameConf" checked={returnFrameConf} onChange={(e) => setReturnFrameConf(e.target.checked)} disabled={!direct} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Frame idx</span>
-                      <Toggle id="frameIdx" checked={frameIdx} onChange={(e) => setFrameIdx(e.target.checked)} disabled={!direct} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Log probs</span>
-                      <Toggle id="logProbs" checked={logProbs} onChange={(e) => setLogProbs(e.target.checked)} disabled={!direct} />
-                    </div>
-                    <div className="flex items-center justify-between col-span-2">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">TDT steps</span>
-                      <Toggle id="tdtSteps" checked={tdtSteps} onChange={(e) => setTdtSteps(e.target.checked)} disabled={!direct} />
+                {direct && (
+                  <div className="border-t border-border-light dark:border-border-dark pt-2 mt-1">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">Detail Flags</p>
+                    <div className="grid grid-cols-2 gap-y-1.5 gap-x-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Words</span>
+                        <Toggle id="words" checked={returnWords} onChange={(e) => setReturnWords(e.target.checked)} disabled={!rt} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Tokens</span>
+                        <Toggle id="tokens" checked={returnTokens} onChange={(e) => setReturnTokens(e.target.checked)} disabled={!rt} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Metrics</span>
+                        <Toggle id="metrics" checked={metrics} onChange={(e) => setMetrics(e.target.checked)} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Frame conf.</span>
+                        <Toggle id="frameConf" checked={returnFrameConf} onChange={(e) => setReturnFrameConf(e.target.checked)} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Frame idx</span>
+                        <Toggle id="frameIdx" checked={frameIdx} onChange={(e) => setFrameIdx(e.target.checked)} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Log probs</span>
+                        <Toggle id="logProbs" checked={logProbs} onChange={(e) => setLogProbs(e.target.checked)} />
+                      </div>
+                      <div className="flex items-center justify-between col-span-2">
+                        <span className="text-sm text-gray-700 dark:text-gray-300">TDT steps</span>
+                        <Toggle id="tdtSteps" checked={tdtSteps} onChange={(e) => setTdtSteps(e.target.checked)} />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="border-t border-border-light dark:border-border-dark pt-2 mt-1">
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
@@ -3004,6 +3051,49 @@ export default function App() {
                     disabled={!direct}
                     className="w-full bg-gray-50 dark:bg-gray-800 border border-border-light dark:border-border-dark rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-muted focus:border-primary-muted dark:focus:ring-accent-muted dark:focus:border-accent-muted dark:text-white disabled:opacity-50"
                   />
+                </div>
+
+                <div className="border-t border-border-light dark:border-border-dark pt-2 mt-1">
+                  <SelectField
+                    label={(
+                      <span className="inline-flex items-center gap-2">
+                        <span>Audio prep</span>
+                        <InfoHint
+                          text={
+                            audioPrepBackend === 'custom-js'
+                              ? 'Default path. WAV files bypass browser decode, other formats use browser codecs plus one explicit final resample to 16 kHz, and decode/downmix/resample time is profiled separately.'
+                              : audioPrepBackend === 'transformers'
+                                ? 'Uses transformers.js read_audio(), which stays on the browser decode/resample path.'
+                                : 'Legacy demo path. Uses AudioContext at target sample rate plus simple browser downmix.'
+                          }
+                        />
+                      </span>
+                    )}
+                    value={audioPrepBackend}
+                    onChange={(e) => setAudioPrepBackend(e.target.value)}
+                  >
+                    <option value="custom-js">custom JS audio prep</option>
+                    <option value="transformers">transformers.js</option>
+                    <option value="demo">demo AudioContext</option>
+                  </SelectField>
+                  {audioPrepBackend === 'custom-js' && (
+                    <div className="mt-2">
+                      <SelectField
+                        label={(
+                          <span className="inline-flex items-center gap-2">
+                            <span>Custom resampler</span>
+                            <InfoHint text="Linear parity matches the current Python and Node parity scripts. The sinc modes use libsamplerate-js. Linear avoids that extra WASM SRC overhead and is now the default custom mode." />
+                          </span>
+                        )}
+                        value={audioPrepQuality}
+                        onChange={(e) => setAudioPrepQuality(e.target.value)}
+                      >
+                        {CUSTOM_RESAMPLER_QUALITY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </SelectField>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3069,16 +3159,15 @@ export default function App() {
             )}
           </div>
 
-          {/* Right Column - Test & Results */}
-          <div className={`${activeView === 'benchmark' ? 'xl:col-span-12' : 'lg:col-span-2'} space-y-6`}>
+          {/* Workspace Columns */}
+          <div className={`${activeView === 'benchmark' ? 'xl:col-span-12' : 'space-y-6'}`}>
             {activeView === 'transcribe' ? (
               <>
                 <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-5">
-                    Test & Transcribe
-                  </h2>
-
-                  <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted">
+                      Test & Transcribe
+                    </h2>
                     <div className="flex gap-3">
                       <button
                         onClick={() => transcribeInput(SAMPLE, 'Harvard-L2-1.ogg')}
@@ -3114,100 +3203,11 @@ export default function App() {
                       Selected: <span className="font-medium text-gray-700 dark:text-gray-200">{selectedFileName}</span>
                     </p>
                   )}
-                </div>
 
-                <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-4">
-                    <div>
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
-                        API Contract
-                      </h2>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
-                        The demo now mirrors the updated NeMo TDT split: pipeline mode stays task-compatible,
-                        while direct mode exposes the full model output.
-                      </p>
-                    </div>
-                    <div className="inline-flex flex-wrap items-center gap-2 text-xs">
-                      <span className="px-2.5 py-1 rounded-full border border-border-light dark:border-border-dark bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                        load: {mode === 'explicit' ? 'explicit local export' : 'pipeline() auto'}
-                      </span>
-                      <span className="px-2.5 py-1 rounded-full border border-border-light dark:border-border-dark bg-primary/10 dark:bg-accent-muted/20 text-primary dark:text-accent-muted">
-                        inference: {direct ? 'direct transcribe()' : 'pipeline()'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4">
-                    <div className="space-y-3">
-                      <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
-                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
-                          Current Output
-                        </div>
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
-                          {currentContractSummary.title}
-                        </div>
-                        <div className="font-mono text-xs text-gray-700 dark:text-gray-300 mb-2">
-                          {currentContractSummary.shape}
-                        </div>
-                        <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                          {currentContractSummary.detail}
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
-                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
-                          Long Audio Merge
-                        </div>
-                        <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                          Long files are decoded in sentence windows, finalized sentences keep their timestamps,
-                          the last immature sentence is retried, and the next window restarts from the end of the
-                          latest finalized sentence.
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
-                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
-                          Current Options
-                        </div>
-                        <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words">
-                          {currentOptionsSnippet}
-                        </pre>
-                        <button
-                          onClick={() => copyToClipboard(currentOptionsSnippet)}
-                          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-muted hover:text-primary dark:text-accent-muted dark:hover:text-primary-muted bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-border-light dark:border-border-dark transition-colors"
-                        >
-                          <span className="material-icons-outlined text-xs">content_copy</span>
-                          Copy options
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div>
-                          <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-1">
-                            Copyable Example
-                          </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Uses the exact load mode and inference toggles selected in the UI.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => copyToClipboard(currentExampleSnippet)}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-primary-muted hover:text-primary dark:text-accent-muted dark:hover:text-primary-muted bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-border-light dark:border-border-dark transition-colors"
-                        >
-                          <span className="material-icons-outlined text-xs">content_copy</span>
-                          Copy JS
-                        </button>
-                      </div>
-                      <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words max-h-[420px] overflow-auto">
-                        {currentExampleSnippet}
-                      </pre>
-                    </div>
+                  <div className="mt-6 pt-5 border-t border-border-light dark:border-border-dark">
+                    <PerformanceMetrics stats={stats} />
                   </div>
                 </div>
-
-                <PerformanceMetrics stats={stats} />
 
                 <div className="space-y-4">
                   <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
@@ -3254,39 +3254,6 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-
-                {history.length > 0 && (
-                  <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted">
-                        History
-                      </h2>
-                      <button
-                        onClick={() => setHistory([])}
-                        className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                    <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                      {history.map((h) => (
-                        <div key={h.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {h.name}
-                            </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700">
-                              {h.mode}
-                            </span>
-                          </div>
-                          <div className="text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900/30 p-3 rounded border border-gray-200 dark:border-gray-700">
-                            {h.text || '(empty)'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </>
             ) : (
               <>
@@ -3867,6 +3834,115 @@ export default function App() {
               </>
             )}
           </div>
+
+          {activeView === 'transcribe' && (
+            <div className="space-y-6">
+              <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
+                <div className="mb-4">
+                  <div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                      API Contract
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      The demo now mirrors the updated NeMo TDT split: pipeline mode stays task-compatible,
+                      while direct mode exposes the full model output.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                    <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                      Current Output
+                    </div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+                      {currentContractSummary.title}
+                    </div>
+                    <div className="font-mono text-xs text-gray-700 dark:text-gray-300 mb-2">
+                      {currentContractSummary.shape}
+                    </div>
+                    <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                      {currentContractSummary.detail}
+                    </p>
+                  </div>
+
+                  {!direct && (
+                    <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                      <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-2">
+                        Current Options
+                      </div>
+                      <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words max-h-[260px] overflow-auto">
+                        {currentOptionsSnippet}
+                      </pre>
+                      <button
+                        onClick={() => copyToClipboard(currentOptionsSnippet)}
+                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-muted hover:text-primary dark:text-accent-muted dark:hover:text-primary-muted bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-border-light dark:border-border-dark transition-colors"
+                      >
+                        <span className="material-icons-outlined text-xs">content_copy</span>
+                        Copy options
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-border-light dark:border-border-dark bg-gray-50 dark:bg-gray-800/50 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <div className="text-[0.65rem] font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted mb-1">
+                          Copyable Example
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Uses the exact load mode and inference toggles selected in the UI.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => copyToClipboard(currentExampleSnippet)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary-muted hover:text-primary dark:text-accent-muted dark:hover:text-primary-muted bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-border-light dark:border-border-dark transition-colors"
+                      >
+                        <span className="material-icons-outlined text-xs">content_copy</span>
+                        Copy JS
+                      </button>
+                    </div>
+                    <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words max-h-[420px] overflow-auto">
+                      {currentExampleSnippet}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
+              {history.length > 0 && (
+                <div className="bg-card-light dark:bg-card-dark rounded-xl shadow-sm border border-border-light dark:border-border-dark p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-primary-muted dark:text-accent-muted">
+                      History
+                    </h2>
+                    <button
+                      onClick={() => setHistory([])}
+                      className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                    {history.map((h) => (
+                      <div key={h.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex justify-between items-start mb-2 gap-3">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white break-words">
+                            {h.name}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700 shrink-0">
+                            {h.mode}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900/30 p-3 rounded border border-gray-200 dark:border-gray-700">
+                          {h.text || '(empty)'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
