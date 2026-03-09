@@ -810,7 +810,7 @@ function BenchmarkMetrics({ overall }) {
 
   return (
     <div className="bg-card-light dark:bg-card-dark rounded-xl border border-border-light dark:border-border-dark px-4 py-3">
-      <MetricRow items={items} />
+      <MetricGrid items={items} />
     </div>
   );
 }
@@ -1404,7 +1404,7 @@ export default function App() {
   );
   const [threadingStatus, setThreadingStatus] = useState({ sab: false, threads: 1 });
 
-  const [direct, setDirect] = useState(initialSettings.direct !== undefined ? Boolean(initialSettings.direct) : true);
+  const [direct, setDirect] = useState(initialSettings.direct !== undefined ? Boolean(initialSettings.direct) : false);
   const [rt, setRt] = useState(initialSettings.rt !== undefined ? Boolean(initialSettings.rt) : true);
   const [audioPrepBackend, setAudioPrepBackend] = useState(
     initialSettings.audioPrepBackend || AUDIO_PREP_BACKEND_DEFAULT
@@ -2781,11 +2781,10 @@ export default function App() {
               Transcribe
             </button>
             <button
-              onClick={() => setActiveView('benchmark')}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeView === 'benchmark'
-                ? 'bg-primary text-white dark:bg-accent-muted'
-                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+              type="button"
+              disabled
+              title="Benchmark Lab is temporarily disabled in the live demo."
+              className="px-4 py-1.5 rounded-lg text-sm font-medium text-gray-400 dark:text-gray-500 bg-transparent cursor-not-allowed opacity-60"
             >
               Benchmark Lab
             </button>
