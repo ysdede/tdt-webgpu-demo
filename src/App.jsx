@@ -32,6 +32,7 @@ const NEMO_PIPELINE_WINDOW_MIN_S = 20;
 const NEMO_PIPELINE_WINDOW_MAX_S = 180;
 
 const SETTINGS_STORAGE_KEY = 'nemo-tdt-demo.settings.v1';
+const asciiDecoder = new TextDecoder();
 const BENCHMARK_HANDLE_DB = 'nemo-tdt-demo.benchmark-folder';
 const BENCHMARK_HANDLE_STORE = 'handles';
 const BENCHMARK_HANDLE_KEY = 'last-folder';
@@ -310,11 +311,8 @@ function readUInt32LE(view, offset) {
 }
 
 function readAscii(view, offset, length) {
-  let out = '';
-  for (let i = 0; i < length; i += 1) {
-    out += String.fromCharCode(view.getUint8(offset + i));
-  }
-  return out;
+  const bytes = new Uint8Array(view.buffer, view.byteOffset + offset, length);
+  return asciiDecoder.decode(bytes);
 }
 
 async function getWavDuration(file) {
