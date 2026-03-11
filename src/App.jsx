@@ -1263,7 +1263,6 @@ function InlineDistributionBars({ bins, expanded = false, onClick }) {
   }
 
   const maxCount = Math.max(...groupedBins.map((bin) => bin.count), 1);
-  const peakBin = groupedBins.reduce((best, bin) => (bin.count > best.count ? bin : best), groupedBins[0]);
   const gap = 4;
   const barWidth = Math.max(10, (width - gap * (groupedBins.length - 1)) / Math.max(groupedBins.length, 1));
   const rangeLabel = `${formatCompactDuration(groupedBins[0].start)}-${formatCompactDuration(groupedBins[groupedBins.length - 1].end)}`;
