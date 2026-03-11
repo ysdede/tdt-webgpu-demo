@@ -2058,14 +2058,13 @@ export default function App() {
           const res = await t(pcm);
           warmupText = textOf(res);
         }
-        console.log('[App] Warm-up raw transcription:', warmupText);
         const normalize = (s) => s.toLowerCase().replace(/[^\w\s]/g, '').trim();
         if (normalize(warmupText).startsWith(normalize(expectedPrefix))) {
           console.log('[App] Warm-up verification passed');
           setModelLoaded(true);
           setStatus('Model ready');
         } else {
-          console.warn(`[App] Warm-up mismatch. Expected prefix "${expectedPrefix}", got "${warmupText}"`);
+          console.warn(`[App] Warm-up mismatch. Expected prefix "${expectedPrefix}"`);
           setModelLoaded(true);
           setStatus('Model ready (warm-up text mismatch)');
         }
