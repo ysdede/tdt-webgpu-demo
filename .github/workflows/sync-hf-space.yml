@@ -4,37 +4,46 @@ on:
   push:
     branches: [main]
     paths:
-      - "src/**"
-      - "public/**"
-      - "index.html"
-      - "package.json"
-      - "package-lock.json"
-      - "postcss.config.js"
-      - "tailwind.config.js"
-      - "vite.config.js"
-      - ".github/workflows/sync-hf-space.yml"
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'postcss.config.js'
+      - 'tailwind.config.js'
+      - 'vite.config.js'
+      - '.github/workflows/sync-hf-space.yml'
   workflow_dispatch:
     inputs:
       transformers_ref:
-        description: "transformers.js ref (branch/tag/SHA)"
+        description: 'transformers.js ref (branch/tag/SHA)'
         required: false
-        default: ""
+        default: ''
+      space_id:
+        description: 'Hugging Face Space ID to deploy'
+        required: false
+        default: 'ysdede/tdt-webgpu-demo'
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       TRANSFORMERS_REPO: ${{ vars.TRANSFORMERS_REPO || 'ysdede/transformers.js' }}
       TRANSFORMERS_REPO_REF: ${{ github.event.inputs.transformers_ref || vars.TRANSFORMERS_REPO_REF || 'v4-nemo-conformer-tdt-main-r2' }}
+      HF_SPACE_ID: ${{ github.event.inputs.space_id || 'ysdede/tdt-webgpu-demo' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout demo
+        uses: actions/checkout@v5
         with:
+          ref: ${{ github.ref_name }}
           path: tdt-webgpu-demo
-          lfs: true
 
       - name: Checkout transformers.js source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.TRANSFORMERS_REPO }}
           ref: ${{ env.TRANSFORMERS_REPO_REF }}
@@ -42,9 +51,9 @@ jobs:
           token: ${{ secrets.TRANSFORMERS_REPO_TOKEN || github.token }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: '22'
           cache: npm
           cache-dependency-path: tdt-webgpu-demo/package-lock.json
 
@@ -63,51 +72,24 @@ jobs:
         working-directory: tdt-webgpu-demo
         run: npm ci
 
-      - name: Build demo using remote transformers.js branch
+      - name: Build demo
         working-directory: tdt-webgpu-demo
         env:
-          TRANSFORMERS_LOCAL: "true"
-          VITE_BASE_PATH: "/"
+          TRANSFORMERS_LOCAL: 'true'
+          VITE_BASE_PATH: '/'
         run: npm run build
 
-      - name: Create HF export
+      - name: Create prebuilt HF static export
+        working-directory: tdt-webgpu-demo
         run: |
-          set -euo pipefail
-          rm -rf hf_export && mkdir -p hf_export
-
-          # Copy demo source (exclude dev artifacts), like parakeet.js-demo
-          rsync -a \
-            --exclude='node_modules' \
-            --exclude='dist' \
-            --exclude='.git' \
-            --exclude='.pytest_cache' \
-            --exclude='.serena' \
-            --exclude='.vscode' \
-            --exclude='docs' \
-            --exclude='scripts' \
-            --exclude='tmp_hf_space' \
-            tdt-webgpu-demo/ hf_export/
-
-          # Remove COI serviceworker (HF provides headers via custom_headers)
-          sed -i '/coi-serviceworker\.js/d' hf_export/index.html
-          rm -f hf_export/public/coi-serviceworker.js 2>/dev/null || true
-
-          # Keep large wasm artifacts in LFS for HF repo limits
-          cat > hf_export/.gitattributes << 'ATTRSEOF'
-          *.wasm filter=lfs diff=lfs merge=lfs -text
-          ATTRSEOF
-
-          # Also push pre-built dist so app works before/without HF build
-          cp -r tdt-webgpu-demo/dist hf_export/dist
-          sed -i '/coi-serviceworker\.js/d' hf_export/dist/index.html
-          rm -f hf_export/dist/coi-serviceworker.js
-
-          echo "HF export ready (source + dist)"
-          find hf_export -maxdepth 2 -not -path '*/node_modules/*' | head -40
-
-      - name: Write HF-specific files
-        run: |
-          cat > hf_export/README.md << 'READMEEOF'
+          rm -rf hf_export
+          mkdir -p hf_export
+          cp -r dist/* hf_export/
+          touch hf_export/.nojekyll
+          echo "{\"branch\": \"${GITHUB_REF_NAME}\", \"commit\": \"${GITHUB_SHA::7}\"}" > hf_export/git-info.json
+          sed -i '/coi-serviceworker\.js/d' hf_export/index.html || true
+          rm -f hf_export/coi-serviceworker.js 2>/dev/null || true
+          cat > hf_export/README.md <<'EOF'
           ---
           title: Transformers.js v4 Parakeet TDT Demo
           emoji: 🎙️
@@ -117,7 +99,7 @@ jobs:
           pinned: true
           header: mini
           fullWidth: true
-          app_file: dist/index.html
+          app_file: index.html
           license: mit
           short_description: Browser ASR demo built from transformers.js TDT branch
           models:
@@ -131,48 +113,31 @@ jobs:
           - nemo
           - nemo-conformer-tdt
           custom_headers:
-            cross-origin-embedder-policy: credentialless
+            cross-origin-embedder-policy: require-corp
             cross-origin-opener-policy: same-origin
-          preload_from_hub:
-          - ysdede/parakeet-tdt-0.6b-v2-onnx-tfjs4
+            cross-origin-resource-policy: cross-origin
           ---
 
           # Transformers.js v4 Parakeet TDT Demo
 
-          Browser ASR demo using Parakeet TDT models.
+          Browser ASR demo using Parakeet TDT models via transformers.js.
 
           Synced from [ysdede/tdt-webgpu-demo](https://github.com/ysdede/tdt-webgpu-demo).
 
           Built in GitHub Actions from:
-
           - Demo repo: `ysdede/tdt-webgpu-demo`
-          - Transformers source: `ysdede/transformers.js@v4-nemo-conformer-tdt-main-r2`
-          READMEEOF
+          - Transformers source: `ysdede/transformers.js@${TRANSFORMERS_REPO_REF}`
 
-      - name: Push to HF Space
+          This Space is deployed from prebuilt static files generated by GitHub Actions. Hugging Face does not run a build step.
+          EOF
+
+      - name: Push prebuilt static export to HF Space
+        working-directory: tdt-webgpu-demo
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          set -e
-          SPACE_URL="https://ysdede:${HF_TOKEN}@huggingface.co/spaces/ysdede/tdt-webgpu-demo"
-          if git clone --depth 1 "$SPACE_URL" space_repo 2>/dev/null; then
-            rsync -a --delete --exclude='.git' hf_export/ space_repo/
-            cd space_repo
-            git config user.name "github-actions"
-            git config user.email "github-actions@users.noreply.github.com"
-            git add -A
-            if ! git diff --cached --quiet; then
-              git commit -m "Sync from GitHub (${GITHUB_SHA::7})"
-              git push origin main
-            fi
-          else
-            cd hf_export
-            git init
-            git config user.name "github-actions"
-            git config user.email "github-actions@users.noreply.github.com"
-            git add -A
-            git commit -m "Sync from GitHub (${GITHUB_SHA::7})"
-            git branch -M main
-            git remote add origin "$SPACE_URL"
-            git push -u origin main
-          fi
+          python -m pip install --upgrade huggingface_hub
+          hf upload "$HF_SPACE_ID" hf_export . \
+            --repo-type=space \
+            --delete '*' \
+            --commit-message "Sync prebuilt static demo (${GITHUB_SHA::7})"

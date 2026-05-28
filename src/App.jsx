@@ -45,6 +45,10 @@ const SAMPLE = withBaseUrl('assets/Harvard-L2-1.ogg');
 
 const VERSION = typeof __TRANSFORMERS_VERSION__ !== 'undefined' ? __TRANSFORMERS_VERSION__ : 'unknown';
 const SOURCE = typeof __TRANSFORMERS_SOURCE__ !== 'undefined' ? __TRANSFORMERS_SOURCE__ : 'unknown';
+const GITHUB_REPO_URL = 'https://github.com/ysdede/tdt-webgpu-demo';
+const GITHUB_REPO_API_URL = 'https://api.github.com/repos/ysdede/tdt-webgpu-demo';
+const GITHUB_STARS_CACHE_KEY = 'tdt-webgpu-demo.githubStars.v1';
+const GITHUB_STARS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function loadSettings() {
   try {
@@ -1378,6 +1382,99 @@ function DetailedDistributionHistogram({ title, subtitle, bins }) {
         </svg>
       </div>
     </div>
+  );
+}
+
+function formatGitHubStars(count) {
+  if (count === null || count === undefined || !Number.isFinite(count) || count < 0) return null;
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) {
+    const value = count / 1000;
+    return `${value >= 10 ? Math.round(value) : value.toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  const value = count / 1_000_000;
+  return `${value >= 10 ? Math.round(value) : value.toFixed(1).replace(/\.0$/, '')}m`;
+}
+
+function readCachedGitHubStars() {
+  try {
+    const raw = window.localStorage?.getItem(GITHUB_STARS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Number.isFinite(parsed?.count) || !Number.isFinite(parsed?.fetchedAt)) return null;
+    return { count: parsed.count, fetchedAt: parsed.fetchedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedGitHubStars(count) {
+  try {
+    window.localStorage?.setItem(
+      GITHUB_STARS_CACHE_KEY,
+      JSON.stringify({ count, fetchedAt: Date.now() }),
+    );
+  } catch {
+    // localStorage can be unavailable in some embedded/private contexts.
+  }
+}
+
+function GitHubStarsBadge() {
+  const [starCount, setStarCount] = useState(() => readCachedGitHubStars()?.count ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = readCachedGitHubStars();
+    const hasFreshCache = cached && Date.now() - cached.fetchedAt < GITHUB_STARS_CACHE_TTL_MS;
+
+    if (cached?.count != null) {
+      setStarCount(cached.count);
+    }
+    if (hasFreshCache) return undefined;
+
+    fetch(GITHUB_REPO_API_URL, {
+      headers: { Accept: 'application/vnd.github+json' },
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('GitHub API request failed');
+        return response.json();
+      })
+      .then((data) => {
+        const count = Number(data?.stargazers_count);
+        if (!Number.isFinite(count)) return;
+        writeCachedGitHubStars(count);
+        if (!cancelled) setStarCount(count);
+      })
+      .catch(() => {
+        if (!cancelled && cached?.count != null) setStarCount(cached.count);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const formattedStars = formatGitHubStars(starCount);
+
+  return (
+    <a
+      href={GITHUB_REPO_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center overflow-hidden rounded-lg border border-gray-300 bg-gray-100 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+      title="View tdt-webgpu-demo on GitHub"
+      aria-label={formattedStars ? `View tdt-webgpu-demo on GitHub, ${formattedStars} stars` : 'View tdt-webgpu-demo on GitHub'}
+    >
+      <span className="inline-flex items-center gap-1.5 px-3 py-2">
+        <span className="material-icons-outlined text-base">star</span>
+        Stars
+      </span>
+      {formattedStars && (
+        <span className="border-l border-gray-300 px-3 py-2 tabular-nums dark:border-gray-600">
+          {formattedStars}
+        </span>
+      )}
+    </a>
   );
 }
 
@@ -2800,13 +2897,16 @@ export default function App() {
         </div>
 
         {/* Header */}
-        <header className="mb-4">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-            Nemo TDT Demo
-          </h1>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            transformers.js {VERSION} ({SOURCE})
+        <header className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Nemo TDT Demo
+            </h1>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              transformers.js {VERSION} ({SOURCE})
+            </div>
           </div>
+          <GitHubStarsBadge />
         </header>
 
         {usingNpmTransformers && (

@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       transformers_ref:
-        description: "transformers.js ref (branch/tag/SHA)"
+        description: 'transformers.js ref (branch/tag/SHA)'
         required: false
-        default: ""
+        default: ''
 
 permissions:
   contents: read
@@ -24,16 +24,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       TRANSFORMERS_REPO: ${{ vars.TRANSFORMERS_REPO || 'ysdede/transformers.js' }}
       TRANSFORMERS_REPO_REF: ${{ github.event.inputs.transformers_ref || vars.TRANSFORMERS_REPO_REF || 'v4-nemo-conformer-tdt-main-r3' }}
     steps:
       - name: Checkout demo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: transformers-v4-parakeet-demo
 
       - name: Checkout transformers.js source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.TRANSFORMERS_REPO }}
           ref: ${{ env.TRANSFORMERS_REPO_REF }}
@@ -41,9 +42,9 @@ jobs:
           token: ${{ secrets.TRANSFORMERS_REPO_TOKEN || github.token }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: '22'
           cache: npm
           cache-dependency-path: transformers-v4-parakeet-demo/package-lock.json
 
@@ -76,7 +77,7 @@ jobs:
       - name: Build demo using local transformers.js source
         working-directory: transformers-v4-parakeet-demo
         env:
-          TRANSFORMERS_LOCAL: "true"
+          TRANSFORMERS_LOCAL: 'true'
         run: npm run build
 
       - name: Configure Pages
