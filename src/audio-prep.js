@@ -9,6 +9,7 @@ export const CUSTOM_RESAMPLER_QUALITY_OPTIONS = [
 ];
 const WAV_HEADER_SIZE = 12;
 const LANCZOS_A = 3;
+const asciiDecoder = new TextDecoder();
 const resamplerCache = new Map();
 let libsamplerateModulePromise = null;
 
@@ -51,11 +52,8 @@ function getInputMimeType(input) {
 }
 
 function readAscii(view, offset, length) {
-  let out = '';
-  for (let i = 0; i < length; i += 1) {
-    out += String.fromCharCode(view.getUint8(offset + i));
-  }
-  return out;
+  const bytes = new Uint8Array(view.buffer, view.byteOffset + offset, length);
+  return asciiDecoder.decode(bytes);
 }
 
 function detectWavInput(arrayBuffer, input) {
